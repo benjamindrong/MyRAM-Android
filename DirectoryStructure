@@ -1,0 +1,18 @@
+com.apexcoretechs.myram/
+├── data/
+│   ├── dao/
+│   ├── AppDatabase.kt
+│   ├── Folder.kt
+│   ├── Note.kt
+│   └── Repository.kt
+├── ui/
+│   ├── NotesViewModel.kt
+│   └── theme/
+│       ├── Color.kt
+│       ├── Typography.kt
+│       └── MyRAMTheme.kt
+│   └── screens/
+│       ├── FoldersScreen.kt
+│       ├── NotesListScreen.kt
+│       └── NoteEditorScreen.kt
+└── MainActivity.kt
