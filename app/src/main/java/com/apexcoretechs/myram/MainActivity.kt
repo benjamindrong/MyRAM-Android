@@ -16,21 +16,29 @@ class MainActivity : ComponentActivity() {
             MyRAMTheme {
                 val vm = androidx.lifecycle.viewmodel.compose.viewModel<NotesViewModel>()
 
-                var currentScreen by remember { mutableStateOf("folders") }
+                var currentScreen by remember { mutableStateOf("list") }
                 var selectedNote by remember { mutableStateOf<Note?>(null) }
 
-                when (currentScreen) {
-                    "folders" -> FoldersScreen(vm = vm).apply {
-                        vm.selectedFolder.collectAsState().value?.let {
-                            currentScreen = "notes"
-                        }
-                    }
-                    "notes" -> NotesListScreen(vm = vm) { note ->
-                        selectedNote = note
+                // Auto open last note if available
+                LaunchedEffect(vm.currentNote) {
+                    vm.currentNote.value?.let {
+                        selectedNote = it
                         currentScreen = "editor"
                     }
-                    "editor" -> NoteEditorScreen(vm = vm, note = selectedNote) {
-                        currentScreen = "notes"
+                }
+
+                when (currentScreen) {
+                    "list" -> NotesListScreen(vm = vm) { note ->
+                        selectedNote = note
+                        currentScreen = "editor"
+                        vm.selectNote(note)
+                    }
+                    "editor" -> NoteEditorScreen(
+                        vm = vm,
+                        note = selectedNote
+                    ) {
+                        currentScreen = "list"
+                        vm.selectNote(null) // optional: clear current on back
                     }
                 }
             }

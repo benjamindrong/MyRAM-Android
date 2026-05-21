@@ -2,10 +2,9 @@ package com.apexcoretechs.myram.data
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
-import com.apexcoretechs.myram.data.dao.*
+import com.apexcoretechs.myram.data.dao.NoteDao
 
-@Database(entities = [Folder::class, Note::class], version = 1)
+@Database(entities = [Note::class], version = 2)  // version bumped
 abstract class AppDatabase : RoomDatabase() {
-    abstract fun folderDao(): FolderDao
     abstract fun noteDao(): NoteDao
 }

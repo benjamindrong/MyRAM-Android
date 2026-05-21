@@ -3,42 +3,61 @@ package com.apexcoretechs.myram.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.apexcoretechs.myram.data.*
+import com.apexcoretechs.myram.data.Note
+import com.apexcoretechs.myram.data.Repository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class NotesViewModel(app: Application) : AndroidViewModel(app) {
-//    private val repo = Repository.get(app)
-
-    // make repo public if needed
     val repo = Repository.get(getApplication())
 
-    val folders = repo.folderDao.getAll().stateIn(
+    val allNotes = repo.noteDao.getAll().stateIn(
         viewModelScope, SharingStarted.Lazily, emptyList()
     )
 
-    private val _selectedFolder = MutableStateFlow<Folder?>(null)
-    val selectedFolder = _selectedFolder.asStateFlow()
+    private val _currentNote = MutableStateFlow<Note?>(null)
+    val currentNote = _currentNote.asStateFlow()
 
-    fun selectFolder(folder: Folder?) { _selectedFolder.value = folder }
+    // Save last opened note
+    private val prefs = app.getSharedPreferences("myram_prefs", Application.MODE_PRIVATE)
 
-    fun createFolder(name: String) = viewModelScope.launch {
-        repo.folderDao.insert(Folder(name = name))
-    }
-
-    fun deleteFolder(folder: Folder) = viewModelScope.launch {
-        repo.folderDao.delete(folder)
-    }
-
-    fun createNote(title: String, content: String) = viewModelScope.launch {
-        selectedFolder.value?.let {
-            repo.noteDao.insert(Note(folderId = it.id, title = title, content = content))
+    init {
+        // Load last note on startup
+        val lastNoteId = prefs.getInt("last_note_id", -1)
+        if (lastNoteId != -1) {
+            viewModelScope.launch {
+                repo.noteDao.getById(lastNoteId).collect { note ->
+                    _currentNote.value = note
+                }
+            }
         }
     }
 
-    fun updateNote(note: Note) = viewModelScope.launch {
-        repo.noteDao.update(note)
+    fun selectNote(note: Note?) {
+        _currentNote.value = note
+        note?.let {
+            prefs.edit().putInt("last_note_id", it.id).apply()
+        }
     }
 
+    fun createNote(title: String? = null, content: String? = null) = viewModelScope.launch {
+        val newNote = Note(
+            title = title?.takeIf { it.isNotBlank() } ?: "",
+            content = content?.takeIf { it.isNotBlank() } ?: ""
+        )
+        val id = repo.noteDao.insert(newNote)
+        val created = newNote.copy(id = id.toInt())
+        selectNote(created)
+    }
 
+    fun updateNote(note: Note) = viewModelScope.launch {
+        repo.noteDao.update(note.copy(lastModified = System.currentTimeMillis()))
+    }
+
+    fun deleteNote(note: Note) = viewModelScope.launch {
+        repo.noteDao.delete(note)
+        if (_currentNote.value?.id == note.id) {
+            _currentNote.value = null
+        }
+    }
 }
