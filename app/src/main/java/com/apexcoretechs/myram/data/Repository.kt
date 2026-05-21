@@ -2,7 +2,6 @@ package com.apexcoretechs.myram.data
 
 import android.content.Context
 import androidx.room.Room
-import com.apexcoretechs.myram.data.dao.FolderDao
 import com.apexcoretechs.myram.data.dao.NoteDao
 
 class Repository private constructor(context: Context) {
@@ -11,7 +10,6 @@ class Repository private constructor(context: Context) {
         AppDatabase::class.java, "myram.db"
     ).build()
 
-    val folderDao: FolderDao = db.folderDao()
     val noteDao: NoteDao = db.noteDao()
 
     companion object {

@@ -4,9 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,25 +14,18 @@ import com.apexcoretechs.myram.ui.NotesViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NotesListScreen(vm: NotesViewModel, onNoteSelected: (Note?) -> Unit) {
-    val folder = vm.selectedFolder.collectAsState().value ?: return
-    val notes by remember(folder.id) {
-        vm.repo.noteDao.getNotes(folder.id)
-    }.collectAsState(initial = emptyList())
+fun NotesListScreen(
+    vm: NotesViewModel,
+    onNoteSelected: (Note?) -> Unit
+) {
+    val notes by vm.allNotes.collectAsState()
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(folder.name) },
-                navigationIcon = {
-                    IconButton(onClick = { vm.selectFolder(null) }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
+            TopAppBar(title = { Text("My Notes") })
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { onNoteSelected(null) }) {
+            FloatingActionButton(onClick = { vm.createNote() }) {
                 Text("+")
             }
         }
@@ -47,7 +37,7 @@ fun NotesListScreen(vm: NotesViewModel, onNoteSelected: (Note?) -> Unit) {
                     .fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("No notes yet")
+                Text("No notes yet. Tap + to create one.")
             }
         } else {
             LazyColumn(
@@ -64,11 +54,12 @@ fun NotesListScreen(vm: NotesViewModel, onNoteSelected: (Note?) -> Unit) {
                             .clickable { onNoteSelected(note) }
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Text(note.title, style = MaterialTheme.typography.titleMedium)
+                            Text(note.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                note.content.take(100),
-                                style = MaterialTheme.typography.bodyMedium
+                                note.content.take(120),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2
                             )
                         }
                     }
