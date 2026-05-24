@@ -40,7 +40,11 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun createNote(title: String? = null, content: String? = null) = viewModelScope.launch {
+    fun createNote(
+        title: String? = null,
+        content: String? = null,
+        onCreated: (Note) -> Unit = {}
+    ) = viewModelScope.launch {
         val newNote = Note(
             title = title?.takeIf { it.isNotBlank() } ?: "",
             content = content?.takeIf { it.isNotBlank() } ?: ""
@@ -48,6 +52,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         val id = repo.noteDao.insert(newNote)
         val created = newNote.copy(id = id.toInt())
         selectNote(created)
+        onCreated(created)
     }
 
     fun updateNote(note: Note) = viewModelScope.launch {

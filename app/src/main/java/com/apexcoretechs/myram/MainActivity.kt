@@ -18,10 +18,11 @@ class MainActivity : ComponentActivity() {
 
                 var currentScreen by remember { mutableStateOf("list") }
                 var selectedNote by remember { mutableStateOf<Note?>(null) }
+                val currentNote by vm.currentNote.collectAsState()
 
                 // Auto open last note if available
-                LaunchedEffect(vm.currentNote) {
-                    vm.currentNote.value?.let {
+                LaunchedEffect(currentNote) {
+                    currentNote?.let {
                         selectedNote = it
                         currentScreen = "editor"
                     }
@@ -35,7 +36,8 @@ class MainActivity : ComponentActivity() {
                     }
                     "editor" -> NoteEditorScreen(
                         vm = vm,
-                        note = selectedNote
+                        note = selectedNote,
+                        onNoteChanged = { selectedNote = it }
                     ) {
                         currentScreen = "list"
                         vm.selectNote(null) // optional: clear current on back

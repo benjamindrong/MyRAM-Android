@@ -3,9 +3,12 @@ package com.apexcoretechs.myram.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
@@ -20,15 +23,19 @@ import kotlinx.coroutines.launch
 fun NoteEditorScreen(
     vm: NotesViewModel,
     note: Note?,
+    onNoteChanged: (Note) -> Unit,
     onBack: () -> Unit
 ) {
-    var title by remember { mutableStateOf(TextFieldValue(note?.title ?: "")) }
-    var content by remember { mutableStateOf(TextFieldValue(note?.content ?: "")) }
+    var title by remember(note?.id) { mutableStateOf(TextFieldValue(note?.title ?: "")) }
+    var content by remember(note?.id) { mutableStateOf(TextFieldValue(note?.content ?: "")) }
+    var undoContent by remember(note?.id) { mutableStateOf<TextFieldValue?>(null) }
     var saveJob by remember { mutableStateOf<Job?>(null) }
+    var hasEditedCurrentNote by remember(note?.id) { mutableStateOf(false) }
 
     // Auto-save with debounce
-    LaunchedEffect(title, content) {
+    LaunchedEffect(note?.id, title, content) {
         saveJob?.cancel()
+        if (!hasEditedCurrentNote) return@LaunchedEffect
         saveJob = vm.viewModelScope.launch {
             delay(800) // 800ms debounce
             note?.let { current ->
@@ -49,6 +56,40 @@ fun NoteEditorScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            undoContent?.let {
+                                content = it
+                                undoContent = null
+                            }
+                        },
+                        enabled = undoContent != null
+                    ) {
+                        Text("Undo")
+                    }
+                    IconButton(
+                        onClick = {
+                            note?.let { current ->
+                                vm.deleteNote(current)
+                                onBack()
+                            }
+                        },
+                        enabled = note != null
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete note")
+                    }
+                    IconButton(
+                        onClick = {
+                            saveJob?.cancel()
+                            vm.createNote { created ->
+                                onNoteChanged(created)
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = "New note")
+                    }
                 }
             )
         }
@@ -57,18 +98,28 @@ fun NoteEditorScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
+                .imePadding()
                 .padding(16.dp)
         ) {
             OutlinedTextField(
                 value = title,
-                onValueChange = { title = it },
+                onValueChange = {
+                    hasEditedCurrentNote = true
+                    title = it
+                },
                 placeholder = { Text("Title") },
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = content,
-                onValueChange = { content = it },
+                onValueChange = {
+                    hasEditedCurrentNote = true
+                    if (it.text != content.text) {
+                        undoContent = content.copy(selection = TextRange(content.text.length))
+                    }
+                    content = it
+                },
                 placeholder = { Text("Start typing...") },
                 modifier = Modifier
                     .fillMaxWidth()
