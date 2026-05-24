@@ -30,10 +30,12 @@ fun NoteEditorScreen(
     var content by remember(note?.id) { mutableStateOf(TextFieldValue(note?.content ?: "")) }
     var undoContent by remember(note?.id) { mutableStateOf<TextFieldValue?>(null) }
     var saveJob by remember { mutableStateOf<Job?>(null) }
+    var hasEditedCurrentNote by remember(note?.id) { mutableStateOf(false) }
 
     // Auto-save with debounce
-    LaunchedEffect(title, content) {
+    LaunchedEffect(note?.id, title, content) {
         saveJob?.cancel()
+        if (!hasEditedCurrentNote) return@LaunchedEffect
         saveJob = vm.viewModelScope.launch {
             delay(800) // 800ms debounce
             note?.let { current ->
@@ -80,6 +82,7 @@ fun NoteEditorScreen(
                     }
                     IconButton(
                         onClick = {
+                            saveJob?.cancel()
                             vm.createNote { created ->
                                 onNoteChanged(created)
                             }
@@ -100,7 +103,10 @@ fun NoteEditorScreen(
         ) {
             OutlinedTextField(
                 value = title,
-                onValueChange = { title = it },
+                onValueChange = {
+                    hasEditedCurrentNote = true
+                    title = it
+                },
                 placeholder = { Text("Title") },
                 modifier = Modifier.fillMaxWidth()
             )
@@ -108,6 +114,7 @@ fun NoteEditorScreen(
             OutlinedTextField(
                 value = content,
                 onValueChange = {
+                    hasEditedCurrentNote = true
                     if (it.text != content.text) {
                         undoContent = content.copy(selection = TextRange(content.text.length))
                     }
