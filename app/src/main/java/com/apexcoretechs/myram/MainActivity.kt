@@ -7,13 +7,30 @@ import androidx.compose.runtime.*
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.ui.NotesViewModel
 import com.apexcoretechs.myram.ui.screens.*
+import com.apexcoretechs.myram.ui.theme.AppearanceSetting
 import com.apexcoretechs.myram.ui.theme.MyRAMTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MyRAMTheme {
+            val prefs = remember {
+                getSharedPreferences("myram_prefs", MODE_PRIVATE)
+            }
+            var appearanceSetting by remember {
+                mutableStateOf(
+                    AppearanceSetting.fromPreferenceValue(
+                        prefs.getString("appearance_setting", AppearanceSetting.System.preferenceValue)
+                    )
+                )
+            }
+
+            fun updateAppearanceSetting(setting: AppearanceSetting) {
+                appearanceSetting = setting
+                prefs.edit().putString("appearance_setting", setting.preferenceValue).apply()
+            }
+
+            MyRAMTheme(appearanceSetting = appearanceSetting) {
                 val vm = androidx.lifecycle.viewmodel.compose.viewModel<NotesViewModel>()
 
                 var currentScreen by remember { mutableStateOf("list") }
@@ -29,7 +46,11 @@ class MainActivity : ComponentActivity() {
                 }
 
                 when (currentScreen) {
-                    "list" -> NotesListScreen(vm = vm) { note ->
+                    "list" -> NotesListScreen(
+                        vm = vm,
+                        appearanceSetting = appearanceSetting,
+                        onAppearanceSettingChanged = ::updateAppearanceSetting
+                    ) { note ->
                         selectedNote = note
                         currentScreen = "editor"
                         vm.selectNote(note)

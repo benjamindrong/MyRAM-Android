@@ -22,9 +22,14 @@ private val DarkColors = darkColorScheme(
 
 @Composable
 fun MyRAMTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    appearanceSetting: AppearanceSetting = AppearanceSetting.System,
     content: @Composable () -> Unit
 ) {
+    val darkTheme = when (appearanceSetting) {
+        AppearanceSetting.System -> isSystemInDarkTheme()
+        AppearanceSetting.Light -> false
+        AppearanceSetting.Dark -> true
+    }
     val colors = if (darkTheme) DarkColors else LightColors
 
     MaterialTheme(
@@ -32,4 +37,15 @@ fun MyRAMTheme(
         typography = Typography,
         content = content
     )
+}
+
+enum class AppearanceSetting(val preferenceValue: String, val label: String) {
+    System("system", "System"),
+    Light("light", "Light"),
+    Dark("dark", "Dark");
+
+    companion object {
+        fun fromPreferenceValue(value: String?): AppearanceSetting =
+            entries.firstOrNull { it.preferenceValue == value } ?: System
+    }
 }
