@@ -8,7 +8,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
@@ -28,9 +27,50 @@ fun NoteEditorScreen(
 ) {
     var title by remember(note?.id) { mutableStateOf(TextFieldValue(note?.title ?: "")) }
     var content by remember(note?.id) { mutableStateOf(TextFieldValue(note?.content ?: "")) }
-    var undoContent by remember(note?.id) { mutableStateOf<TextFieldValue?>(null) }
+    var undoHistory by remember(note?.id) { mutableStateOf<List<EditorSnapshot>>(emptyList()) }
+    var pendingUndoSnapshot by remember(note?.id) { mutableStateOf<EditorSnapshot?>(null) }
     var saveJob by remember { mutableStateOf<Job?>(null) }
+    var undoJob by remember { mutableStateOf<Job?>(null) }
     var hasEditedCurrentNote by remember(note?.id) { mutableStateOf(false) }
+    var isRestoringUndo by remember(note?.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun currentSnapshot() = EditorSnapshot(title = title, content = content)
+
+    fun pushUndoSnapshot(snapshot: EditorSnapshot) {
+        if (snapshot == currentSnapshot()) return
+        undoHistory = (undoHistory + snapshot).takeLast(200)
+    }
+
+    fun flushPendingUndoSnapshot() {
+        undoJob?.cancel()
+        pendingUndoSnapshot?.let(::pushUndoSnapshot)
+        pendingUndoSnapshot = null
+    }
+
+    fun scheduleUndoSnapshot(snapshot: EditorSnapshot) {
+        if (isRestoringUndo) return
+        if (pendingUndoSnapshot == null) {
+            pendingUndoSnapshot = snapshot
+        }
+        undoJob?.cancel()
+        undoJob = scope.launch {
+            delay(800)
+            pendingUndoSnapshot?.let(::pushUndoSnapshot)
+            pendingUndoSnapshot = null
+        }
+    }
+
+    fun undoLastEdit() {
+        flushPendingUndoSnapshot()
+        val snapshot = undoHistory.lastOrNull() ?: return
+        undoHistory = undoHistory.dropLast(1)
+        isRestoringUndo = true
+        hasEditedCurrentNote = true
+        title = snapshot.title
+        content = snapshot.content
+        isRestoringUndo = false
+    }
 
     // Auto-save with debounce
     LaunchedEffect(note?.id, title, content) {
@@ -59,13 +99,8 @@ fun NoteEditorScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = {
-                            undoContent?.let {
-                                content = it
-                                undoContent = null
-                            }
-                        },
-                        enabled = undoContent != null
+                        onClick = ::undoLastEdit,
+                        enabled = undoHistory.isNotEmpty() || pendingUndoSnapshot != null
                     ) {
                         Text("Undo")
                     }
@@ -104,6 +139,9 @@ fun NoteEditorScreen(
             OutlinedTextField(
                 value = title,
                 onValueChange = {
+                    if (it != title) {
+                        scheduleUndoSnapshot(currentSnapshot())
+                    }
                     hasEditedCurrentNote = true
                     title = it
                 },
@@ -114,10 +152,10 @@ fun NoteEditorScreen(
             OutlinedTextField(
                 value = content,
                 onValueChange = {
-                    hasEditedCurrentNote = true
-                    if (it.text != content.text) {
-                        undoContent = content.copy(selection = TextRange(content.text.length))
+                    if (it != content) {
+                        scheduleUndoSnapshot(currentSnapshot())
                     }
+                    hasEditedCurrentNote = true
                     content = it
                 },
                 placeholder = { Text("Start typing...") },
@@ -129,3 +167,8 @@ fun NoteEditorScreen(
         }
     }
 }
+
+private data class EditorSnapshot(
+    val title: TextFieldValue,
+    val content: TextFieldValue
+)
