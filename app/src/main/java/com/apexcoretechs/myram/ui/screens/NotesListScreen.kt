@@ -11,18 +11,50 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.ui.NotesViewModel
+import com.apexcoretechs.myram.ui.theme.AppearanceSetting
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotesListScreen(
     vm: NotesViewModel,
+    appearanceSetting: AppearanceSetting,
+    onAppearanceSettingChanged: (AppearanceSetting) -> Unit,
     onNoteSelected: (Note?) -> Unit
 ) {
     val notes by vm.allNotes.collectAsState()
+    var appearanceMenuExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("My Notes") })
+            TopAppBar(
+                title = { Text("My Notes") },
+                actions = {
+                    Box {
+                        TextButton(onClick = { appearanceMenuExpanded = true }) {
+                            Text("Appearance")
+                        }
+                        DropdownMenu(
+                            expanded = appearanceMenuExpanded,
+                            onDismissRequest = { appearanceMenuExpanded = false }
+                        ) {
+                            AppearanceSetting.entries.forEach { setting ->
+                                DropdownMenuItem(
+                                    text = { Text(setting.label) },
+                                    onClick = {
+                                        onAppearanceSettingChanged(setting)
+                                        appearanceMenuExpanded = false
+                                    },
+                                    trailingIcon = {
+                                        if (setting == appearanceSetting) {
+                                            Text("✓")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { vm.createNote() }) {
