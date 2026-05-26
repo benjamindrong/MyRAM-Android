@@ -1,10 +1,15 @@
 package com.apexcoretechs.myram.ui
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.apexcoretechs.myram.data.Note
+import com.apexcoretechs.myram.data.NotePhotoAttachment
 import com.apexcoretechs.myram.data.Repository
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -66,6 +71,32 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         repo.noteDao.update(note.copy(lastModified = System.currentTimeMillis()))
     }
 
+    fun noteAttachments(noteId: Int?): Flow<List<NotePhotoAttachment>> {
+        return if (noteId == null || noteId <= 0) {
+            flowOf(emptyList())
+        } else {
+            repo.noteDao.getAttachmentsForNote(noteId)
+        }
+    }
+
+    fun addPhotoAttachments(noteId: Int, uris: List<Uri>) = viewModelScope.launch {
+        if (noteId <= 0 || uris.isEmpty()) return@launch
+        uris.forEach { uri ->
+            loadNormalizedImageData(uri)?.let { imageData ->
+                repo.noteDao.insertAttachment(
+                    NotePhotoAttachment(
+                        noteId = noteId,
+                        imageData = imageData
+                    )
+                )
+            }
+        }
+    }
+
+    fun removePhotoAttachment(attachment: NotePhotoAttachment) = viewModelScope.launch {
+        repo.noteDao.deleteAttachment(attachment)
+    }
+
     fun deleteNote(note: Note) = viewModelScope.launch {
         repo.noteDao.update(
             note.copy(
@@ -107,5 +138,19 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun purgeExpiredDeletedNotes() {
         val cutoff = System.currentTimeMillis() - recentlyDeletedRetentionMillis
         repo.noteDao.purgeDeletedBefore(cutoff)
+    }
+
+    private fun loadNormalizedImageData(uri: Uri): ByteArray? {
+        val resolver = getApplication<Application>().contentResolver
+        val sourceBytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        val bitmap = BitmapFactory.decodeByteArray(sourceBytes, 0, sourceBytes.size) ?: return sourceBytes
+        return compressBitmap(bitmap) ?: sourceBytes
+    }
+
+    private fun compressBitmap(bitmap: Bitmap): ByteArray? {
+        return ByteArrayOutputStream().use { output ->
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)) return null
+            output.toByteArray()
+        }
     }
 }

@@ -1,5 +1,7 @@
 package com.apexcoretechs.myram
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -13,10 +15,13 @@ import com.apexcoretechs.myram.ui.theme.MyRAMTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val startupSharedUris = extractSharedImageUris(intent)
+
         setContent {
             val prefs = remember {
                 getSharedPreferences("myram_prefs", MODE_PRIVATE)
             }
+            var pendingSharedUris by remember { mutableStateOf(startupSharedUris) }
             var appearanceSetting by remember {
                 mutableStateOf(
                     AppearanceSetting.fromPreferenceValue(
@@ -45,6 +50,17 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                LaunchedEffect(pendingSharedUris) {
+                    if (pendingSharedUris.isEmpty()) return@LaunchedEffect
+                    vm.createNote { created ->
+                        selectedNote = created
+                        currentScreen = "editor"
+                        vm.selectNote(created)
+                        vm.addPhotoAttachments(created.id, pendingSharedUris)
+                        pendingSharedUris = emptyList()
+                    }
+                }
+
                 when (currentScreen) {
                     "list" -> NotesListScreen(
                         vm = vm,
@@ -65,6 +81,25 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun extractSharedImageUris(intent: Intent?): List<Uri> {
+        if (intent == null) return emptyList()
+        val action = intent.action ?: return emptyList()
+        if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return emptyList()
+
+        @Suppress("DEPRECATION")
+        return when (action) {
+            Intent.ACTION_SEND -> {
+                val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                listOfNotNull(uri)
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                val uris = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+                uris?.filterNotNull().orEmpty()
+            }
+            else -> emptyList()
         }
     }
 }

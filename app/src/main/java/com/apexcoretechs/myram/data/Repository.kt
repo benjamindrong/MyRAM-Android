@@ -11,7 +11,7 @@ class Repository private constructor(context: Context) {
         context,
         AppDatabase::class.java, "myram.db"
     )
-        .addMigrations(MIGRATION_2_3)
+        .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
         .build()
 
     val noteDao: NoteDao = db.noteDao()
@@ -20,6 +20,25 @@ class Repository private constructor(context: Context) {
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE Note ADD COLUMN deletedAt INTEGER")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `NotePhotoAttachment` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `noteId` INTEGER NOT NULL,
+                        `imageData` BLOB NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        FOREIGN KEY(`noteId`) REFERENCES `Note`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_NotePhotoAttachment_noteId` ON `NotePhotoAttachment` (`noteId`)"
+                )
             }
         }
 
