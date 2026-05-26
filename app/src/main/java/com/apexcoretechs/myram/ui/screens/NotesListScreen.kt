@@ -97,37 +97,56 @@ fun NotesListScreen(
     ) { padding ->
         val visibleNotes = if (showingRecentlyDeleted) recentlyDeletedNotes else notes
 
-        if (visibleNotes.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (showingRecentlyDeleted) {
-                        "No recently deleted notes."
-                    } else {
-                        "No notes yet. Tap + to create one."
-                    }
-                )
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+        ) {
+            if (showingRecentlyDeleted) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Deleted notes are kept here for 7 days.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-        } else {
-            LazyColumn(
+
+            if (visibleNotes.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (showingRecentlyDeleted) {
+                            "No recently deleted notes."
+                        } else {
+                            "No notes yet. Tap + to create one."
+                        }
+                    )
+                }
+            } else {
+                LazyColumn(
                 modifier = Modifier
-                    .padding(padding)
                     .fillMaxSize()
                     .padding(16.dp)
-            ) {
-                items(visibleNotes, key = { it.id }) { note ->
-                    NoteListRow(
-                        note = note,
-                        showingRecentlyDeleted = showingRecentlyDeleted,
-                        onNoteSelected = onNoteSelected,
-                        onSoftDelete = vm::deleteNote,
-                        onRestore = vm::restoreNote,
-                        onPermanentDelete = vm::permanentlyDeleteNote
-                    )
+                ) {
+                    items(visibleNotes, key = { it.id }) { note ->
+                        NoteListRow(
+                            note = note,
+                            showingRecentlyDeleted = showingRecentlyDeleted,
+                            onNoteSelected = onNoteSelected,
+                            onSoftDelete = vm::deleteNote,
+                            onRestore = vm::restoreNote,
+                            onPermanentDelete = vm::permanentlyDeleteNote
+                        )
+                    }
                 }
             }
         }
