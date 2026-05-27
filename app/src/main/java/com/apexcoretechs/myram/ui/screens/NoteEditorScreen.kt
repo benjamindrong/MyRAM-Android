@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -267,6 +268,7 @@ fun NoteEditorScreen(
     vm: NotesViewModel,
     note: Note?,
     onNoteChanged: (Note) -> Unit,
+    onShareNote: (Note) -> Unit,
     onBack: () -> Unit
 ) {
     var title by remember(note?.id) { mutableStateOf(TextFieldValue(note?.title ?: "")) }
@@ -469,6 +471,15 @@ fun NoteEditorScreen(
                         enabled = note != null
                     ) {
                         Icon(Icons.Filled.Delete, contentDescription = "Delete note")
+                    }
+
+                    IconButton(
+                        onClick = {
+                            note?.let(onShareNote)
+                        },
+                        enabled = note != null
+                    ) {
+                        Icon(Icons.Filled.Share, contentDescription = "Share note")
                     }
 
                     IconButton(

@@ -1,8 +1,10 @@
 package com.apexcoretechs.myram
 
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
@@ -65,7 +67,14 @@ class MainActivity : ComponentActivity() {
                     "list" -> NotesListScreen(
                         vm = vm,
                         appearanceSetting = appearanceSetting,
-                        onAppearanceSettingChanged = ::updateAppearanceSetting
+                        onAppearanceSettingChanged = ::updateAppearanceSetting,
+                        onExportSelectedNotes = { selectedNotes ->
+                            vm.exportNotesForSharing(
+                                notesToExport = selectedNotes,
+                                onSuccess = ::shareExportedFile,
+                                onError = ::showExportError
+                            )
+                        }
                     ) { note ->
                         selectedNote = note
                         currentScreen = "editor"
@@ -74,7 +83,14 @@ class MainActivity : ComponentActivity() {
                     "editor" -> NoteEditorScreen(
                         vm = vm,
                         note = selectedNote,
-                        onNoteChanged = { selectedNote = it }
+                        onNoteChanged = { selectedNote = it },
+                        onShareNote = { noteToShare ->
+                            vm.exportNotesForSharing(
+                                notesToExport = listOf(noteToShare),
+                                onSuccess = ::shareExportedFile,
+                                onError = ::showExportError
+                            )
+                        }
                     ) {
                         currentScreen = "list"
                         vm.selectNote(null) // optional: clear current on back
@@ -101,5 +117,25 @@ class MainActivity : ComponentActivity() {
             }
             else -> emptyList()
         }
+    }
+
+    private fun shareExportedFile(export: com.apexcoretechs.myram.ui.ShareableExport) {
+        val chooserTitle = if (export.mimeType == "application/zip") {
+            "Share notes archive"
+        } else {
+            "Share note"
+        }
+
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = export.mimeType
+            putExtra(Intent.EXTRA_STREAM, export.uri)
+            clipData = ClipData.newUri(contentResolver, "note-export", export.uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(shareIntent, chooserTitle))
+    }
+
+    private fun showExportError(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 }

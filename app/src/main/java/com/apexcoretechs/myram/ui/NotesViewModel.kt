@@ -4,14 +4,19 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
 import com.apexcoretechs.myram.data.Repository
+import com.apexcoretechs.myram.export.NoteExporter
+import java.io.File
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class NotesViewModel(app: Application) : AndroidViewModel(app) {
     private val recentlyDeletedRetentionMillis = 7L * 24 * 60 * 60 * 1000
@@ -153,4 +158,46 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
             output.toByteArray()
         }
     }
+
+    fun exportNotesForSharing(
+        notesToExport: List<Note>,
+        onSuccess: (ShareableExport) -> Unit,
+        onError: (String) -> Unit
+    ) = viewModelScope.launch {
+        runCatching {
+            createShareableExport(notesToExport)
+        }.onSuccess(onSuccess)
+            .onFailure { error ->
+                onError(error.message ?: "Unable to export notes.")
+            }
+    }
+
+    private suspend fun createShareableExport(notesToExport: List<Note>): ShareableExport =
+        withContext(Dispatchers.IO) {
+            val activeNotes = notesToExport.filter { it.deletedAt == null }
+            require(activeNotes.isNotEmpty()) { "No notes selected for export." }
+
+            val app = getApplication<Application>()
+            val exportsDirectory = File(app.cacheDir, "exports")
+            if (!exportsDirectory.exists()) {
+                exportsDirectory.mkdirs()
+            }
+
+            val artifact = NoteExporter.exportNotes(activeNotes, exportsDirectory)
+            val uri = FileProvider.getUriForFile(
+                app,
+                "${app.packageName}.fileprovider",
+                artifact.file
+            )
+
+            ShareableExport(
+                uri = uri,
+                mimeType = artifact.mimeType
+            )
+        }
 }
+
+data class ShareableExport(
+    val uri: Uri,
+    val mimeType: String
+)

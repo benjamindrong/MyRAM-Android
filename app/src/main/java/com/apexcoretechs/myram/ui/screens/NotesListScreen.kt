@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import androidx.compose.material3.Checkbox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,15 +24,20 @@ fun NotesListScreen(
     vm: NotesViewModel,
     appearanceSetting: AppearanceSetting,
     onAppearanceSettingChanged: (AppearanceSetting) -> Unit,
+    onExportSelectedNotes: (List<Note>) -> Unit,
     onNoteSelected: (Note?) -> Unit
 ) {
     val notes by vm.allNotes.collectAsState()
     val recentlyDeletedNotes by vm.recentlyDeletedNotes.collectAsState()
     var appearanceMenuExpanded by remember { mutableStateOf(false) }
     var showingRecentlyDeleted by remember { mutableStateOf(false) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedNoteIds by remember { mutableStateOf(setOf<Int>()) }
 
     LaunchedEffect(showingRecentlyDeleted) {
         if (showingRecentlyDeleted) {
+            selectionMode = false
+            selectedNoteIds = emptySet()
             vm.refreshRecentlyDeletedNotes()
         }
     }
@@ -49,31 +55,58 @@ fun NotesListScreen(
                 },
                 actions = {
                     if (!showingRecentlyDeleted) {
-                        TextButton(onClick = { showingRecentlyDeleted = true }) {
-                            Text("Deleted")
+                        if (selectionMode) {
+                            TextButton(
+                                onClick = {
+                                    selectionMode = false
+                                    selectedNoteIds = emptySet()
+                                }
+                            ) {
+                                Text("Cancel")
+                            }
+                            TextButton(
+                                onClick = {
+                                    val selected = notes.filter { selectedNoteIds.contains(it.id) }
+                                    onExportSelectedNotes(selected)
+                                    selectionMode = false
+                                    selectedNoteIds = emptySet()
+                                },
+                                enabled = selectedNoteIds.isNotEmpty()
+                            ) {
+                                Text("Export")
+                            }
+                        } else {
+                            TextButton(onClick = { selectionMode = true }) {
+                                Text("Select")
+                            }
+                            TextButton(onClick = { showingRecentlyDeleted = true }) {
+                                Text("Deleted")
+                            }
                         }
 
-                        Box {
-                            TextButton(onClick = { appearanceMenuExpanded = true }) {
-                                Text("Appearance")
-                            }
-                            DropdownMenu(
-                                expanded = appearanceMenuExpanded,
-                                onDismissRequest = { appearanceMenuExpanded = false }
-                            ) {
-                                AppearanceSetting.entries.forEach { setting ->
-                                    DropdownMenuItem(
-                                        text = { Text(setting.label) },
-                                        onClick = {
-                                            onAppearanceSettingChanged(setting)
-                                            appearanceMenuExpanded = false
-                                        },
-                                        trailingIcon = {
-                                            if (setting == appearanceSetting) {
-                                                Text("✓")
+                        if (!selectionMode) {
+                            Box {
+                                TextButton(onClick = { appearanceMenuExpanded = true }) {
+                                    Text("Appearance")
+                                }
+                                DropdownMenu(
+                                    expanded = appearanceMenuExpanded,
+                                    onDismissRequest = { appearanceMenuExpanded = false }
+                                ) {
+                                    AppearanceSetting.entries.forEach { setting ->
+                                        DropdownMenuItem(
+                                            text = { Text(setting.label) },
+                                            onClick = {
+                                                onAppearanceSettingChanged(setting)
+                                                appearanceMenuExpanded = false
+                                            },
+                                            trailingIcon = {
+                                                if (setting == appearanceSetting) {
+                                                    Text("✓")
+                                                }
                                             }
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -141,7 +174,16 @@ fun NotesListScreen(
                         NoteListRow(
                             note = note,
                             showingRecentlyDeleted = showingRecentlyDeleted,
+                            selectionMode = selectionMode,
+                            selected = selectedNoteIds.contains(note.id),
                             onNoteSelected = onNoteSelected,
+                            onSelectionToggled = { toggled ->
+                                selectedNoteIds = if (selectedNoteIds.contains(toggled.id)) {
+                                    selectedNoteIds - toggled.id
+                                } else {
+                                    selectedNoteIds + toggled.id
+                                }
+                            },
                             onSoftDelete = vm::deleteNote,
                             onRestore = vm::restoreNote,
                             onPermanentDelete = vm::permanentlyDeleteNote
@@ -158,7 +200,10 @@ fun NotesListScreen(
 private fun NoteListRow(
     note: Note,
     showingRecentlyDeleted: Boolean,
+    selectionMode: Boolean,
+    selected: Boolean,
     onNoteSelected: (Note?) -> Unit,
+    onSelectionToggled: (Note) -> Unit,
     onSoftDelete: (Note) -> Unit,
     onRestore: (Note) -> Unit,
     onPermanentDelete: (Note) -> Unit
@@ -167,6 +212,7 @@ private fun NoteListRow(
     val dismissState = rememberSwipeToDismissBoxState(
         positionalThreshold = { distance -> distance * 0.25f },
         confirmValueChange = { value ->
+            if (selectionMode) return@rememberSwipeToDismissBoxState false
             when {
                 !showingRecentlyDeleted && value != SwipeToDismissBoxValue.Settled -> {
                     onSoftDelete(note)
@@ -188,8 +234,8 @@ private fun NoteListRow(
     SwipeToDismissBox(
         modifier = Modifier.padding(vertical = 4.dp),
         state = dismissState,
-        enableDismissFromStartToEnd = true,
-        enableDismissFromEndToStart = true,
+        enableDismissFromStartToEnd = !selectionMode,
+        enableDismissFromEndToStart = !selectionMode,
         backgroundContent = {
             val direction = dismissState.dismissDirection
             val isRestore = showingRecentlyDeleted && direction == SwipeToDismissBoxValue.StartToEnd
@@ -228,7 +274,11 @@ private fun NoteListRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(enabled = !showingRecentlyDeleted) {
-                    onNoteSelected(note)
+                    if (selectionMode) {
+                        onSelectionToggled(note)
+                    } else {
+                        onNoteSelected(note)
+                    }
                 },
             shape = cardShape
         ) {
@@ -236,6 +286,16 @@ private fun NoteListRow(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (selectionMode && !showingRecentlyDeleted) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = selected,
+                            onCheckedChange = { onSelectionToggled(note) }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Selected", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 Text(note.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium)
                 Text(
                     note.content.take(120),
