@@ -66,6 +66,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -218,6 +219,7 @@ private fun AttachmentViewerDialog(
 
 @Composable
 private fun AttachmentInlineActions(
+    modifier: Modifier = Modifier,
     onDismissKeyboard: () -> Unit,
     onCut: () -> Unit,
     onCopy: () -> Unit,
@@ -227,7 +229,7 @@ private fun AttachmentInlineActions(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(100))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
             .padding(horizontal = 4.dp, vertical = 2.dp)
@@ -508,24 +510,44 @@ fun NoteEditorScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            OutlinedTextField(
-                value = content,
-                onValueChange = {
-                    if (it != content) {
-                        scheduleUndoSnapshot(currentSnapshot())
-                    }
-                    hasEditedCurrentNote = true
-                    content = it
-                },
-                placeholder = { Text("Start typing...") },
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .onFocusChanged { focusState ->
-                        if (focusState.isFocused) focusedField = EditorField.CONTENT
+            ) {
+                OutlinedTextField(
+                    value = content,
+                    onValueChange = {
+                        if (it != content) {
+                            scheduleUndoSnapshot(currentSnapshot())
+                        }
+                        hasEditedCurrentNote = true
+                        content = it
                     },
-                singleLine = false
-            )
+                    placeholder = { Text("Start typing...") },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) focusedField = EditorField.CONTENT
+                        },
+                    singleLine = false
+                )
+
+                AttachmentInlineActions(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 8.dp, bottom = 8.dp)
+                        .testTag("keyboard-control-bar"),
+                    onDismissKeyboard = {
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
+                    },
+                    onCut = ::cutFromFocused,
+                    onCopy = ::copyFromFocused,
+                    onPaste = ::pasteIntoFocused,
+                    onSelectAll = ::selectAllFocused
+                )
+            }
 
             if (attachments.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
@@ -552,17 +574,6 @@ fun NoteEditorScreen(
                             }
 
                             Spacer(Modifier.weight(1f))
-
-                            AttachmentInlineActions(
-                                onDismissKeyboard = {
-                                    keyboardController?.hide()
-                                    focusManager.clearFocus()
-                                },
-                                onCut = ::cutFromFocused,
-                                onCopy = ::copyFromFocused,
-                                onPaste = ::pasteIntoFocused,
-                                onSelectAll = ::selectAllFocused
-                            )
 
                             IconButton(onClick = { areAttachmentsExpanded = !areAttachmentsExpanded }) {
                                 Text(
