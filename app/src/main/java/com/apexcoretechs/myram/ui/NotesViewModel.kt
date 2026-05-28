@@ -50,6 +50,10 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         notes.filter { it.folderId == folderId }
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val folderActiveNoteCounts = combine(allFolders, allActiveNotes) { folders, notes ->
+        computeFolderActiveNoteCounts(folders = folders, notes = notes)
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyMap())
+
     // Backward-compatible alias used by older screens.
     val allNotes = visibleNotes
 
@@ -364,6 +368,41 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
             cursor = folder.parentFolderId
         }
         return segments.reversed()
+    }
+}
+
+internal fun computeFolderActiveNoteCounts(
+    folders: List<Folder>,
+    notes: List<Note>
+): Map<Int, Int> {
+    if (folders.isEmpty()) return emptyMap()
+
+    val childFolderIdsByParent = folders
+        .groupBy(keySelector = { it.parentFolderId }, valueTransform = { it.id })
+    val directCountsByFolderId = notes
+        .asSequence()
+        .filter { it.deletedAt == null }
+        .mapNotNull { it.folderId }
+        .groupingBy { it }
+        .eachCount()
+
+    return buildMap(folders.size) {
+        folders.forEach { folder ->
+            var subtreeCount = 0
+            val queue = ArrayDeque<Int>()
+            val visited = mutableSetOf<Int>()
+            queue.addLast(folder.id)
+
+            while (queue.isNotEmpty()) {
+                val folderId = queue.removeFirst()
+                if (!visited.add(folderId)) continue
+
+                subtreeCount += directCountsByFolderId[folderId] ?: 0
+                childFolderIdsByParent[folderId].orEmpty().forEach(queue::addLast)
+            }
+
+            put(folder.id, subtreeCount)
+        }
     }
 }
 
