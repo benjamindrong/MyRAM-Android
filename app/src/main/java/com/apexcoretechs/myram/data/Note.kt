@@ -10,5 +10,6 @@ data class Note(
     val content: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val lastModified: Long = System.currentTimeMillis(),
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val folderId: Int? = null
 )

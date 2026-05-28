@@ -1,5 +1,6 @@
 package com.apexcoretechs.myram
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
@@ -7,12 +8,25 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.ui.NotesViewModel
+import com.apexcoretechs.myram.ui.ShareableExport
 import com.apexcoretechs.myram.ui.screens.*
 import com.apexcoretechs.myram.ui.theme.AppearanceSetting
 import com.apexcoretechs.myram.ui.theme.MyRAMTheme
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -24,12 +38,36 @@ class MainActivity : ComponentActivity() {
                 getSharedPreferences("myram_prefs", MODE_PRIVATE)
             }
             var pendingSharedUris by remember { mutableStateOf(startupSharedUris) }
+            var pendingExport by remember { mutableStateOf<ShareableExport?>(null) }
+            var pendingSaveFile by remember { mutableStateOf<File?>(null) }
             var appearanceSetting by remember {
                 mutableStateOf(
                     AppearanceSetting.fromPreferenceValue(
                         prefs.getString("appearance_setting", AppearanceSetting.System.preferenceValue)
                     )
                 )
+            }
+            val saveToFilesLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                val targetUri = result.data?.data
+                val sourceFile = pendingSaveFile
+                pendingSaveFile = null
+                if (result.resultCode != Activity.RESULT_OK || targetUri == null || sourceFile == null) {
+                    return@rememberLauncherForActivityResult
+                }
+
+                runCatching {
+                    contentResolver.openOutputStream(targetUri)?.use { output ->
+                        sourceFile.inputStream().use { input ->
+                            input.copyTo(output)
+                        }
+                    } ?: error("Unable to open destination file.")
+                }.onSuccess {
+                    Toast.makeText(this, "Export saved to Files.", Toast.LENGTH_SHORT).show()
+                }.onFailure { error ->
+                    showExportError(error.message ?: "Unable to save export.")
+                }
             }
 
             fun updateAppearanceSetting(setting: AppearanceSetting) {
@@ -39,6 +77,36 @@ class MainActivity : ComponentActivity() {
 
             MyRAMTheme(appearanceSetting = appearanceSetting) {
                 val vm = androidx.lifecycle.viewmodel.compose.viewModel<NotesViewModel>()
+
+                pendingExport?.let { export ->
+                    AlertDialog(
+                        onDismissRequest = { pendingExport = null },
+                        title = { Text("Export Notes") },
+                        text = { Text("Choose where to send your export.") },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    pendingExport = null
+                                    shareExportedFile(export)
+                                }
+                            ) {
+                                Text("Share")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    pendingExport = null
+                                    saveExportToFiles(export, saveToFilesLauncher) { file ->
+                                        pendingSaveFile = file
+                                    }
+                                }
+                            ) {
+                                Text("Files")
+                            }
+                        }
+                    )
+                }
 
                 var currentScreen by remember { mutableStateOf("list") }
                 var selectedNote by remember { mutableStateOf<Note?>(null) }
@@ -71,7 +139,7 @@ class MainActivity : ComponentActivity() {
                         onExportSelectedNotes = { selectedNotes ->
                             vm.exportNotesForSharing(
                                 notesToExport = selectedNotes,
-                                onSuccess = ::shareExportedFile,
+                                onSuccess = { pendingExport = it },
                                 onError = ::showExportError
                             )
                         }
@@ -87,7 +155,7 @@ class MainActivity : ComponentActivity() {
                         onShareNote = { noteToShare ->
                             vm.exportNotesForSharing(
                                 notesToExport = listOf(noteToShare),
-                                onSuccess = ::shareExportedFile,
+                                onSuccess = { pendingExport = it },
                                 onError = ::showExportError
                             )
                         }
@@ -120,19 +188,80 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun shareExportedFile(export: com.apexcoretechs.myram.ui.ShareableExport) {
-        val chooserTitle = if (export.mimeType == "application/zip") {
-            "Share notes archive"
-        } else {
-            "Share note"
+        if (export.uris.isEmpty()) {
+            showExportError("No files were exported.")
+            return
         }
 
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = export.mimeType
-            putExtra(Intent.EXTRA_STREAM, export.uri)
-            clipData = ClipData.newUri(contentResolver, "note-export", export.uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val chooserTitle = if (export.uris.size == 1) "Share note export" else "Share notes export"
+        val shareIntent = if (export.uris.size == 1) {
+            Intent(Intent.ACTION_SEND).apply {
+                type = export.mimeType
+                putExtra(Intent.EXTRA_STREAM, export.uris.first())
+                clipData = ClipData.newUri(contentResolver, "note-export", export.uris.first())
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        } else {
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = export.mimeType
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(export.uris))
+                clipData = ClipData.newUri(contentResolver, "note-export", export.uris.first()).apply {
+                    export.uris.drop(1).forEach { uri -> addItem(ClipData.Item(uri)) }
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         }
+
         startActivity(Intent.createChooser(shareIntent, chooserTitle))
+    }
+
+    private fun saveExportToFiles(
+        export: ShareableExport,
+        launcher: androidx.activity.result.ActivityResultLauncher<Intent>,
+        onSourceReady: (File) -> Unit
+    ) {
+        val (sourceFile, suggestedName, mimeType) = buildFileForFilesExport(export)
+        onSourceReady(sourceFile)
+        val saveIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mimeType
+            putExtra(Intent.EXTRA_TITLE, suggestedName)
+        }
+        launcher.launch(saveIntent)
+    }
+
+    private fun buildFileForFilesExport(export: ShareableExport): Triple<File, String, String> {
+        val files = export.files.distinctBy { it.absolutePath }
+        require(files.isNotEmpty()) { "No files were exported." }
+        if (files.size == 1) {
+            val file = files.first()
+            val mimeType = when (file.extension.lowercase()) {
+                "json" -> "application/json"
+                "zip" -> "application/zip"
+                else -> export.mimeType
+            }
+            return Triple(file, file.name, mimeType)
+        }
+
+        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val zipFile = File(cacheDir, "MyRAM-Export-$timestamp.zip")
+        val root = files.firstOrNull { it.extension.equals("json", ignoreCase = true) }?.parentFile
+            ?: files.first().parentFile
+            ?: cacheDir
+
+        ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
+            files.sortedBy { it.name }.forEach { file ->
+                val entryName = file
+                    .relativeToOrSelf(root)
+                    .path
+                    .replace(File.separatorChar, '/')
+                zip.putNextEntry(ZipEntry(entryName))
+                file.inputStream().use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+
+        return Triple(zipFile, zipFile.name, "application/zip")
     }
 
     private fun showExportError(message: String) {

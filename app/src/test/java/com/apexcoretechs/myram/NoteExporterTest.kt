@@ -1,119 +1,93 @@
 package com.apexcoretechs.myram
 
 import com.apexcoretechs.myram.data.Note
+import com.apexcoretechs.myram.data.NotePhotoAttachment
 import com.apexcoretechs.myram.export.NoteExporter
 import java.io.File
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
-import java.util.zip.ZipInputStream
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NoteExporterTest {
 
     @Test
-    fun buildNoteExportText_includesTitleTimestampsAndBody() {
-        val note = Note(
-            id = 1,
-            title = "Trip Plan",
-            content = "Book flights",
-            createdAt = 1_000L,
-            lastModified = 2_000L
-        )
-
-        val text = NoteExporter.buildNoteExportText(
-            note = note,
-            exportedAtMillis = 3_000L,
-            dateFormatter = { millis -> "TS-$millis" }
-        )
-
-        assertTrue(text.contains("MyRAM Notes Export"))
-        assertTrue(text.contains("Exported: TS-3000"))
-        assertTrue(text.contains("Title: Trip Plan"))
-        assertTrue(text.contains("Created: TS-1000"))
-        assertTrue(text.contains("Modified: TS-2000"))
-        assertTrue(text.contains("Body:\nBook flights"))
-    }
-
-    @Test
-    fun exportNotes_singleNote_createsUtf8TextFile() {
+    fun exportNotes_singleNote_createsJsonWithContentAndNoAttachments() {
         val directory = makeTempDirectory()
         try {
             val note = Note(
                 id = 1,
                 title = "Daily Log",
-                content = "UTF-8 test ✅",
+                content = "Body content",
                 createdAt = 1_000L,
                 lastModified = 2_000L
             )
 
             val artifact = NoteExporter.exportNotes(
                 notes = listOf(note),
+                attachmentsByNoteId = emptyMap(),
+                folderPathProvider = { emptyList() },
                 exportDirectory = directory,
                 nowMillis = 4_000L
             )
 
-            assertEquals("text/plain", artifact.mimeType)
-            assertEquals("txt", artifact.file.extension.lowercase())
-            val text = artifact.file.readText(Charsets.UTF_8)
-            assertTrue(text.contains("Title: Daily Log"))
-            assertTrue(text.contains("UTF-8 test ✅"))
+            assertEquals("*/*", artifact.mimeType)
+            val jsonFile = artifact.files.first { it.extension.lowercase() == "json" }
+            val json = jsonFile.readText(Charsets.UTF_8)
+            assertTrue(json.contains("\"title\": \"Daily Log\""))
+            assertTrue(json.contains("\"content\": \"Body content\""))
+            assertTrue(json.contains("\"attachments\": []"))
         } finally {
             directory.deleteRecursively()
         }
     }
 
     @Test
-    fun exportNotes_multipleNotes_createsZipWithSeparateTextFiles() {
+    fun exportNotes_includesAttachmentFilesAndMetadata() {
         val directory = makeTempDirectory()
         try {
-            val noteA = Note(
-                id = 1,
-                title = "First Note",
-                content = "Body A",
+            val note = Note(
+                id = 5,
+                title = "Trip",
+                content = "Remember this",
                 createdAt = 1_000L,
                 lastModified = 2_000L
             )
-            val noteB = Note(
-                id = 2,
-                title = "Second Note",
-                content = "Body B",
-                createdAt = 1_500L,
-                lastModified = 2_500L
+            val jpeg = byteArrayOf(
+                0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(),
+                0x00, 0x01, 0x02
+            )
+            val attachment = NotePhotoAttachment(
+                id = 7,
+                noteId = 5,
+                imageData = jpeg,
+                createdAt = 3_000L
             )
 
             val artifact = NoteExporter.exportNotes(
-                notes = listOf(noteA, noteB),
+                notes = listOf(note),
+                attachmentsByNoteId = mapOf(5 to listOf(attachment)),
+                folderPathProvider = { listOf("Work", "Ideas") },
                 exportDirectory = directory,
                 nowMillis = 5_000L
             )
 
-            assertEquals("application/zip", artifact.mimeType)
-            assertEquals("zip", artifact.file.extension.lowercase())
+            val jsonFile = artifact.files.first { it.extension.lowercase() == "json" }
+            val attachmentFiles = artifact.files.filter { it.extension.lowercase() != "json" }
 
-            val entries = unzipEntries(artifact.file)
-            assertTrue(entries.containsKey("Notes/First Note.txt"))
-            assertTrue(entries.containsKey("Notes/Second Note.txt"))
-            assertTrue(entries["Notes/First Note.txt"]!!.contains("Body A"))
-            assertTrue(entries["Notes/Second Note.txt"]!!.contains("Body B"))
+            assertEquals(1, attachmentFiles.size)
+            assertTrue(attachmentFiles.first().name.endsWith(".jpg"))
+            assertTrue(attachmentFiles.first().readBytes().contentEquals(jpeg))
+
+            val json = jsonFile.readText(Charsets.UTF_8)
+            assertTrue(json.contains("\"folderPath\": [\"Work\",\"Ideas\"]"))
+            assertTrue(json.contains("\"mimeType\": \"image/jpeg\""))
+            assertTrue(json.contains("\"filename\": \"${attachmentFiles.first().name}\""))
+            assertFalse(json.contains("\"body\""))
         } finally {
             directory.deleteRecursively()
         }
-    }
-
-    private fun unzipEntries(zipFile: File): Map<String, String> {
-        val entries = mutableMapOf<String, String>()
-        ZipInputStream(zipFile.inputStream()).use { zip ->
-            var entry = zip.nextEntry
-            while (entry != null) {
-                val bytes = zip.readBytes()
-                entries[entry.name] = String(bytes, StandardCharsets.UTF_8)
-                zip.closeEntry()
-                entry = zip.nextEntry
-            }
-        }
-        return entries
     }
 
     private fun makeTempDirectory(): File {
