@@ -7,14 +7,23 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.apexcoretechs.myram.data.Folder
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
 import com.apexcoretechs.myram.data.Repository
 import com.apexcoretechs.myram.export.NoteExporter
-import java.io.File
 import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -22,9 +31,31 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     private val recentlyDeletedRetentionMillis = 7L * 24 * 60 * 60 * 1000
     val repo = Repository.get(getApplication())
 
-    val allNotes = repo.noteDao.getAll().stateIn(
+    private val _currentFolderId = MutableStateFlow<Int?>(null)
+    val currentFolderId: StateFlow<Int?> = _currentFolderId.asStateFlow()
+
+    val allFolders = repo.folderDao.getAll().stateIn(
         viewModelScope, SharingStarted.Lazily, emptyList()
     )
+
+    private val allActiveNotes = repo.noteDao.getAll().stateIn(
+        viewModelScope, SharingStarted.Lazily, emptyList()
+    )
+
+    val visibleFolders = combine(allFolders, _currentFolderId) { folders, parentId ->
+        folders.filter { it.parentFolderId == parentId }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val visibleNotes = combine(allActiveNotes, _currentFolderId) { notes, folderId ->
+        notes.filter { it.folderId == folderId }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    // Backward-compatible alias used by older screens.
+    val allNotes = visibleNotes
+
+    val currentFolder = combine(allFolders, _currentFolderId) { folders, selectedId ->
+        folders.firstOrNull { it.id == selectedId }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     private val _currentNote = MutableStateFlow<Note?>(null)
     val currentNote = _currentNote.asStateFlow()
@@ -32,28 +63,41 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     private val _recentlyDeletedNotes = MutableStateFlow<List<Note>>(emptyList())
     val recentlyDeletedNotes = _recentlyDeletedNotes.asStateFlow()
 
-    // Save last opened note
     private val prefs = app.getSharedPreferences("myram_prefs", Application.MODE_PRIVATE)
 
     init {
         viewModelScope.launch {
             purgeExpiredDeletedNotes()
+            loadLastNote()
         }
+    }
 
-        // Load last note on startup
+    private suspend fun loadLastNote() {
         val lastNoteId = prefs.getInt("last_note_id", -1)
-        if (lastNoteId != -1) {
-            viewModelScope.launch {
-                _currentNote.value = repo.noteDao.getById(lastNoteId).first()
-            }
+        if (lastNoteId == -1) return
+
+        repo.noteDao.getById(lastNoteId).first()?.let { note ->
+            _currentNote.value = note
+            _currentFolderId.value = note.folderId
         }
     }
 
     fun selectNote(note: Note?) {
         _currentNote.value = note
-        note?.let {
-            prefs.edit().putInt("last_note_id", it.id).apply()
+        if (note == null) {
+            prefs.edit().remove("last_note_id").apply()
+            return
         }
+        prefs.edit().putInt("last_note_id", note.id).apply()
+    }
+
+    fun openFolder(folder: Folder) {
+        _currentFolderId.value = folder.id
+    }
+
+    fun navigateToParentFolder() {
+        val activeFolder = currentFolder.value ?: return
+        _currentFolderId.value = activeFolder.parentFolderId
     }
 
     fun createNote(
@@ -63,7 +107,8 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     ) = viewModelScope.launch {
         val newNote = Note(
             title = title?.takeIf { it.isNotBlank() } ?: "",
-            content = content?.takeIf { it.isNotBlank() } ?: ""
+            content = content?.takeIf { it.isNotBlank() } ?: "",
+            folderId = _currentFolderId.value
         )
         val id = repo.noteDao.insert(newNote)
         val created = newNote.copy(id = id.toInt())
@@ -73,7 +118,104 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateNote(note: Note) = viewModelScope.launch {
         if (note.deletedAt != null) return@launch
-        repo.noteDao.update(note.copy(lastModified = System.currentTimeMillis()))
+        val updated = note.copy(lastModified = System.currentTimeMillis())
+        repo.noteDao.update(updated)
+        if (_currentNote.value?.id == updated.id) {
+            _currentNote.value = updated
+        }
+    }
+
+    fun createFolder(name: String = "New Folder") = viewModelScope.launch {
+        val trimmed = name.trim()
+        val now = System.currentTimeMillis()
+        val folder = Folder(
+            name = if (trimmed.isBlank()) "New Folder" else trimmed,
+            parentFolderId = _currentFolderId.value,
+            createdAt = now,
+            modifiedAt = now
+        )
+        repo.folderDao.insert(folder)
+    }
+
+    fun renameFolder(folder: Folder, newName: String) = viewModelScope.launch {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return@launch
+        repo.folderDao.update(
+            folder.copy(
+                name = trimmed,
+                modifiedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    fun deleteFolder(folder: Folder, preserveNotes: Boolean) = viewModelScope.launch {
+        val subtreeIds = folderSubtreeIds(folder.id, allFolders.value)
+        if (subtreeIds.isEmpty()) return@launch
+        val now = System.currentTimeMillis()
+
+        if (preserveNotes) {
+            repo.noteDao.moveNotesInFoldersToTopLevel(subtreeIds.toList(), now)
+            _currentNote.value = _currentNote.value?.let { note ->
+                if (note.folderId != null && subtreeIds.contains(note.folderId)) {
+                    note.copy(folderId = null, lastModified = now)
+                } else {
+                    note
+                }
+            }
+        } else {
+            repo.noteDao.deleteNotesInFolders(subtreeIds.toList())
+            if (_currentNote.value?.folderId != null && subtreeIds.contains(_currentNote.value?.folderId)) {
+                _currentNote.value = null
+                prefs.edit().remove("last_note_id").apply()
+            }
+        }
+
+        val foldersById = allFolders.value.associateBy { it.id }
+        val orderedForDelete = subtreeIds
+            .mapNotNull { foldersById[it] }
+            .sortedByDescending { depth(it, foldersById) }
+        orderedForDelete.forEach { repo.folderDao.delete(it) }
+
+        if (_currentFolderId.value != null && subtreeIds.contains(_currentFolderId.value)) {
+            _currentFolderId.value = folder.parentFolderId
+        }
+    }
+
+    private fun depth(folder: Folder, byId: Map<Int, Folder>): Int {
+        var depth = 0
+        var cursor = folder.parentFolderId
+        while (cursor != null) {
+            depth += 1
+            cursor = byId[cursor]?.parentFolderId
+        }
+        return depth
+    }
+
+    private fun folderSubtreeIds(rootId: Int, folders: List<Folder>): Set<Int> {
+        val childrenByParent = folders.groupBy { it.parentFolderId }
+        val result = mutableSetOf<Int>()
+        val queue = ArrayDeque<Int>()
+        queue.add(rootId)
+        while (queue.isNotEmpty()) {
+            val next = queue.removeFirst()
+            if (!result.add(next)) continue
+            childrenByParent[next].orEmpty().forEach { child ->
+                queue.add(child.id)
+            }
+        }
+        return result
+    }
+
+    fun moveNote(note: Note, destinationFolderId: Int?) = viewModelScope.launch {
+        if (note.deletedAt != null || note.folderId == destinationFolderId) return@launch
+        val updated = note.copy(
+            folderId = destinationFolderId,
+            lastModified = System.currentTimeMillis()
+        )
+        repo.noteDao.update(updated)
+        if (_currentNote.value?.id == updated.id) {
+            _currentNote.value = updated
+        }
     }
 
     fun noteAttachments(noteId: Int?): Flow<List<NotePhotoAttachment>> {
@@ -103,12 +245,11 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteNote(note: Note) = viewModelScope.launch {
-        repo.noteDao.update(
-            note.copy(
-                lastModified = System.currentTimeMillis(),
-                deletedAt = System.currentTimeMillis()
-            )
+        val updated = note.copy(
+            lastModified = System.currentTimeMillis(),
+            deletedAt = System.currentTimeMillis()
         )
+        repo.noteDao.update(updated)
         if (_currentNote.value?.id == note.id) {
             _currentNote.value = null
             prefs.edit().remove("last_note_id").apply()
@@ -122,12 +263,11 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun restoreNote(note: Note) = viewModelScope.launch {
-        repo.noteDao.update(
-            note.copy(
-                lastModified = System.currentTimeMillis(),
-                deletedAt = null
-            )
+        val restored = note.copy(
+            lastModified = System.currentTimeMillis(),
+            deletedAt = null
         )
+        repo.noteDao.update(restored)
         refreshRecentlyDeletedNotes()
     }
 
@@ -183,21 +323,52 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
                 exportsDirectory.mkdirs()
             }
 
-            val artifact = NoteExporter.exportNotes(activeNotes, exportsDirectory)
-            val uri = FileProvider.getUriForFile(
-                app,
-                "${app.packageName}.fileprovider",
-                artifact.file
+            val noteIds = activeNotes.map { it.id }
+            val attachmentsByNoteId = repo.noteDao.getAttachmentsForNotes(noteIds)
+                .groupBy { it.noteId }
+
+            val foldersById = repo.folderDao.getAll().first().associateBy { it.id }
+            val folderPathProvider: (Note) -> List<String> = { note ->
+                buildFolderPath(note.folderId, foldersById)
+            }
+
+            val artifact = NoteExporter.exportNotes(
+                notes = activeNotes,
+                attachmentsByNoteId = attachmentsByNoteId,
+                folderPathProvider = folderPathProvider,
+                exportDirectory = exportsDirectory
             )
 
+            val uris = artifact.files.map { file ->
+                FileProvider.getUriForFile(
+                    app,
+                    "${app.packageName}.fileprovider",
+                    file
+                )
+            }
+
             ShareableExport(
-                uri = uri,
-                mimeType = artifact.mimeType
+                uris = uris,
+                mimeType = artifact.mimeType,
+                files = artifact.files
             )
         }
+
+    private fun buildFolderPath(folderId: Int?, foldersById: Map<Int, Folder>): List<String> {
+        if (folderId == null) return emptyList()
+        val segments = mutableListOf<String>()
+        var cursor: Int? = folderId
+        while (cursor != null) {
+            val folder = foldersById[cursor] ?: break
+            segments.add(folder.name)
+            cursor = folder.parentFolderId
+        }
+        return segments.reversed()
+    }
 }
 
 data class ShareableExport(
-    val uri: Uri,
-    val mimeType: String
+    val uris: List<Uri>,
+    val mimeType: String,
+    val files: List<File>
 )

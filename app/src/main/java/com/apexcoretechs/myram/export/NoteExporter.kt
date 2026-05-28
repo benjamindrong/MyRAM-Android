@@ -1,25 +1,23 @@
 package com.apexcoretechs.myram.export
 
 import com.apexcoretechs.myram.data.Note
+import com.apexcoretechs.myram.data.NotePhotoAttachment
 import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 
 data class ExportArtifact(
-    val file: File,
+    val files: List<File>,
     val mimeType: String
 )
 
 object NoteExporter {
-    private const val EMPTY_BODY = "(No content)"
-
     fun exportNotes(
         notes: List<Note>,
+        attachmentsByNoteId: Map<Int, List<NotePhotoAttachment>>,
+        folderPathProvider: (Note) -> List<String>,
         exportDirectory: File,
         nowMillis: Long = System.currentTimeMillis()
     ): ExportArtifact {
@@ -30,96 +28,172 @@ object NoteExporter {
             exportDirectory.mkdirs()
         }
 
-        return if (activeNotes.size == 1) {
-            val note = activeNotes.first()
-            val filename = "${safeFileStem(note.title, "Note")}-${timestampToken(nowMillis)}.txt"
-            val file = File(exportDirectory, filename)
-            file.writeText(
-                buildNoteExportText(note = note, exportedAtMillis = nowMillis),
-                Charsets.UTF_8
-            )
-            ExportArtifact(file = file, mimeType = "text/plain")
-        } else {
-            val batchDirectory = File(exportDirectory, "batch-${UUID.randomUUID()}")
-            val notesDirectory = File(batchDirectory, "Notes")
-            notesDirectory.mkdirs()
+        val batchDirectory = File(exportDirectory, "batch-${UUID.randomUUID()}")
+        batchDirectory.mkdirs()
+        val attachmentsDirectory = File(batchDirectory, "attachments")
+        attachmentsDirectory.mkdirs()
 
-            val usedNames = mutableSetOf<String>()
-            activeNotes.forEachIndexed { index, note ->
-                val defaultStem = "Note-${index + 1}"
-                val stem = uniqueStem(safeFileStem(note.title, defaultStem), usedNames)
-                val file = File(notesDirectory, "$stem.txt")
-                file.writeText(
-                    buildNoteExportText(note = note, exportedAtMillis = nowMillis),
-                    Charsets.UTF_8
-                )
-            }
+        val exportedFiles = mutableListOf<File>()
+        val notesJson = buildNotesJson(
+            notes = activeNotes,
+            exportedAtMillis = nowMillis,
+            folderPathProvider = folderPathProvider,
+            attachmentsByNoteId = attachmentsByNoteId,
+            attachmentsDirectory = attachmentsDirectory,
+            exportedFiles = exportedFiles
+        )
 
-            val zipFile = File(exportDirectory, "MyRAM-Notes-${timestampToken(nowMillis)}.zip")
-            ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
-                notesDirectory.listFiles()
-                    ?.sortedBy { it.name }
-                    .orEmpty()
-                    .forEach { txtFile ->
-                        val entry = ZipEntry("Notes/${txtFile.name}")
-                        zip.putNextEntry(entry)
-                        txtFile.inputStream().use { it.copyTo(zip) }
-                        zip.closeEntry()
-                    }
-            }
+        val jsonFile = File(batchDirectory, "MyRAM-Notes-${timestampToken(nowMillis)}.json")
+        jsonFile.writeText(notesJson, Charsets.UTF_8)
 
-            ExportArtifact(file = zipFile, mimeType = "application/zip")
-        }
+        return ExportArtifact(
+            files = listOf(jsonFile) + exportedFiles,
+            mimeType = "*/*"
+        )
     }
 
-    fun buildNoteExportText(
-        note: Note,
+    private fun buildNotesJson(
+        notes: List<Note>,
         exportedAtMillis: Long,
-        dateFormatter: (Long) -> String = ::defaultDateFormatter
+        folderPathProvider: (Note) -> List<String>,
+        attachmentsByNoteId: Map<Int, List<NotePhotoAttachment>>,
+        attachmentsDirectory: File,
+        exportedFiles: MutableList<File>
     ): String {
-        val title = note.title.ifBlank { "Untitled" }
-        val body = note.content.ifBlank { EMPTY_BODY }
-        val createdAt = if (note.createdAt > 0L) note.createdAt else note.lastModified
+        val notesJson = notes.joinToString(separator = ",\n") { note ->
+            val folderPath = folderPathProvider(note)
+            val attachments = attachmentsByNoteId[note.id].orEmpty()
+            val noteAttachmentDir = File(
+                attachmentsDirectory,
+                "note-${note.id}-${safePathSegment(note.title.ifBlank { "untitled" })}"
+            )
+            noteAttachmentDir.mkdirs()
 
-        return buildString {
-            appendLine("MyRAM Notes Export")
-            appendLine("Exported: ${dateFormatter(exportedAtMillis)}")
-            appendLine()
-            appendLine("Title: $title")
-            appendLine("Created: ${dateFormatter(createdAt)}")
-            appendLine("Modified: ${dateFormatter(note.lastModified)}")
-            appendLine("Body:")
-            appendLine(body)
+            val attachmentJson = attachments.mapIndexed { index, attachment ->
+                val attachmentFile = writeAttachmentFile(
+                    attachment = attachment,
+                    index = index,
+                    noteAttachmentDir = noteAttachmentDir
+                )
+                exportedFiles += attachmentFile
+
+                val relativePath = attachmentFile
+                    .relativeTo(attachmentsDirectory.parentFile!!)
+                    .path
+                    .replace(File.separatorChar, '/')
+                """
+                {
+                  "filename": "${jsonString(attachmentFile.name)}",
+                  "relativePath": "${jsonString(relativePath)}",
+                  "mimeType": "${jsonString(detectMimeType(attachment.imageData))}",
+                  "sizeBytes": ${attachment.imageData.size},
+                  "createdAt": ${attachment.createdAt}
+                }
+                """.trimIndent()
+            }.joinToString(separator = ",\n")
+
+            val folderPathJson = folderPath.joinToString(separator = ",") { "\"${jsonString(it)}\"" }
+            """
+            {
+              "id": ${note.id},
+              "title": "${jsonString(note.title)}",
+              "content": "${jsonString(note.content)}",
+              "createdAt": ${note.createdAt},
+              "lastModified": ${note.lastModified},
+              "folderPath": [$folderPathJson],
+              "attachments": [${if (attachmentJson.isNotBlank()) "\n$attachmentJson\n  " else ""}]
+            }
+            """.trimIndent()
+        }
+        return """
+        {
+          "formatVersion": 1,
+          "exportedAt": $exportedAtMillis,
+          "notes": [
+        $notesJson
+          ]
+        }
+        """.trimIndent()
+    }
+
+    private fun writeAttachmentFile(
+        attachment: NotePhotoAttachment,
+        index: Int,
+        noteAttachmentDir: File
+    ): File {
+        val extension = extensionForMime(detectMimeType(attachment.imageData))
+        val file = File(noteAttachmentDir, "attachment-${index + 1}.$extension")
+        file.writeBytes(attachment.imageData)
+        return file
+    }
+
+    private fun jsonString(value: String): String {
+        return buildString(value.length + 8) {
+            value.forEach { ch ->
+                when (ch) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> append(ch)
+                }
+            }
         }
     }
 
-    fun defaultDateFormatter(epochMillis: Long): String {
-        val format = SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.US)
-        return format.format(Date(epochMillis))
+    private fun safePathSegment(value: String): String {
+        val cleaned = value.trim()
+            .replace(Regex("[^a-zA-Z0-9._-]+"), "-")
+            .trim('-')
+            .take(40)
+        return if (cleaned.isBlank()) "item" else cleaned
+    }
+
+    private fun detectMimeType(data: ByteArray): String {
+        if (data.size >= 3 &&
+            data[0] == 0xFF.toByte() &&
+            data[1] == 0xD8.toByte() &&
+            data[2] == 0xFF.toByte()
+        ) {
+            return "image/jpeg"
+        }
+        if (data.size >= 8 &&
+            data[0] == 0x89.toByte() &&
+            data[1] == 0x50.toByte() &&
+            data[2] == 0x4E.toByte() &&
+            data[3] == 0x47.toByte()
+        ) {
+            return "image/png"
+        }
+        if (data.size >= 6) {
+            val header = String(data.copyOfRange(0, 6), Charsets.US_ASCII)
+            if (header == "GIF87a" || header == "GIF89a") {
+                return "image/gif"
+            }
+        }
+        if (data.size >= 12) {
+            val riff = String(data.copyOfRange(0, 4), Charsets.US_ASCII)
+            val webp = String(data.copyOfRange(8, 12), Charsets.US_ASCII)
+            if (riff == "RIFF" && webp == "WEBP") {
+                return "image/webp"
+            }
+        }
+        return "application/octet-stream"
+    }
+
+    private fun extensionForMime(mimeType: String): String {
+        return when (mimeType) {
+            "image/jpeg" -> "jpg"
+            "image/png" -> "png"
+            "image/gif" -> "gif"
+            "image/webp" -> "webp"
+            else -> "bin"
+        }
     }
 
     private fun timestampToken(epochMillis: Long): String {
         val format = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
         return format.format(Date(epochMillis))
-    }
-
-    private fun safeFileStem(rawTitle: String, fallback: String): String {
-        val cleaned = rawTitle.trim()
-            .replace("/", "-")
-            .replace(":", "-")
-            .replace("\n", " ")
-            .take(40)
-            .trim()
-        return if (cleaned.isBlank()) fallback else cleaned
-    }
-
-    private fun uniqueStem(base: String, used: MutableSet<String>): String {
-        if (used.add(base)) return base
-        var index = 2
-        while (true) {
-            val candidate = "$base-$index"
-            if (used.add(candidate)) return candidate
-            index += 1
-        }
     }
 }

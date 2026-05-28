@@ -21,9 +21,10 @@ class NoteEditorScreenTest {
 
     @Test
     fun keyboardControlBar_isVisible_withoutAttachments() {
-        val newNoteButtons = composeRule.onAllNodesWithContentDescription("New note")
-        if (newNoteButtons.fetchSemanticsNodes().isNotEmpty()) {
-            newNoteButtons[0].performClick()
+        val overflowButtons = composeRule.onAllNodesWithContentDescription("More actions")
+        if (overflowButtons.fetchSemanticsNodes().isNotEmpty()) {
+            overflowButtons[0].performClick()
+            composeRule.onNodeWithText("New note").performClick()
         } else {
             composeRule.onNodeWithText("+").performClick()
         }
