@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.apexcoretechs.myram.data.Folder
 import com.apexcoretechs.myram.data.Note
@@ -64,6 +65,7 @@ fun NotesListScreen(
 ) {
     val notes by vm.visibleNotes.collectAsState()
     val visibleFolders by vm.visibleFolders.collectAsState()
+    val folderActiveNoteCounts by vm.folderActiveNoteCounts.collectAsState()
     val allFolders by vm.allFolders.collectAsState()
     val currentFolder by vm.currentFolder.collectAsState()
     val currentFolderId by vm.currentFolderId.collectAsState()
@@ -426,6 +428,7 @@ fun NotesListScreen(
                         items(visibleFolders, key = { "folder-${it.id}" }) { folder ->
                             FolderListRow(
                                 folder = folder,
+                                noteCount = folderActiveNoteCounts[folder.id] ?: 0,
                                 selectionMode = selectionMode,
                                 onOpen = { vm.openFolder(folder) },
                                 onRename = {
@@ -467,6 +470,7 @@ fun NotesListScreen(
 @Composable
 private fun FolderListRow(
     folder: Folder,
+    noteCount: Int,
     selectionMode: Boolean,
     onOpen: () -> Unit,
     onRename: () -> Unit,
@@ -538,6 +542,13 @@ private fun FolderListRow(
                 Icon(Icons.Filled.Folder, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(folder.name, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = noteCount.toString(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End
+                )
             }
         }
     }
