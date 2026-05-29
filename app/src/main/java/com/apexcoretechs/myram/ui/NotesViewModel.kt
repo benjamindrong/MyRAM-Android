@@ -47,7 +47,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val visibleNotes = combine(allActiveNotes, _currentFolderId) { notes, folderId ->
-        notes.filter { it.folderId == folderId }
+        sortNotesForDisplay(notes.filter { it.folderId == folderId })
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val folderActiveNoteCounts = combine(allFolders, allActiveNotes) { folders, notes ->
@@ -68,12 +68,27 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     val recentlyDeletedNotes = _recentlyDeletedNotes.asStateFlow()
 
     private val prefs = app.getSharedPreferences("myram_prefs", Application.MODE_PRIVATE)
+    private val _mainListTitle = MutableStateFlow(
+        prefs.getString("main_list_title", "My Notes")?.takeIf { it.isNotBlank() } ?: "My Notes"
+    )
+    val mainListTitle: StateFlow<String> = _mainListTitle.asStateFlow()
+
+    private val _canUndoActions = MutableStateFlow(false)
+    val canUndoActions: StateFlow<Boolean> = _canUndoActions.asStateFlow()
+    private val undoStack = ArrayDeque<UndoAction>()
 
     init {
         viewModelScope.launch {
             purgeExpiredDeletedNotes()
             loadLastNote()
         }
+    }
+
+    fun renameMainListTitle(newTitle: String) {
+        val trimmed = newTitle.trim()
+        val resolved = if (trimmed.isBlank()) "My Notes" else trimmed
+        _mainListTitle.value = resolved
+        prefs.edit().putString("main_list_title", resolved).apply()
     }
 
     private suspend fun loadLastNote() {
@@ -152,10 +167,54 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    fun renameNote(note: Note, newTitle: String) = viewModelScope.launch {
+        if (note.deletedAt != null) return@launch
+        val updated = note.copy(
+            title = newTitle.trim(),
+            lastModified = System.currentTimeMillis()
+        )
+        repo.noteDao.update(updated)
+        if (_currentNote.value?.id == updated.id) {
+            _currentNote.value = updated
+        }
+    }
+
+    fun setNotePinned(note: Note, isPinned: Boolean) = viewModelScope.launch {
+        if (note.deletedAt != null || note.isPinned == isPinned) return@launch
+        val updated = note.copy(
+            isPinned = isPinned,
+            lastModified = System.currentTimeMillis()
+        )
+        repo.noteDao.update(updated)
+        if (_currentNote.value?.id == updated.id) {
+            _currentNote.value = updated
+        }
+    }
+
+    fun recordTextUndoSnapshot(note: Note, previousTitle: String, previousContent: String) {
+        pushUndoAction(
+            UndoAction.NoteContent(
+                noteId = note.id,
+                previousTitle = previousTitle,
+                previousContent = previousContent
+            )
+        )
+    }
+
     fun deleteFolder(folder: Folder, preserveNotes: Boolean) = viewModelScope.launch {
         val subtreeIds = folderSubtreeIds(folder.id, allFolders.value)
         if (subtreeIds.isEmpty()) return@launch
         val now = System.currentTimeMillis()
+        val snapshotFolders = allFolders.value.filter { subtreeIds.contains(it.id) }
+        val noteSnapshots = repo.noteDao.getAllIncludingDeleted()
+            .filter { note -> note.folderId != null && subtreeIds.contains(note.folderId) }
+            .map { note ->
+                NoteFolderSnapshot(
+                    noteId = note.id,
+                    previousFolderId = note.folderId,
+                    previousDeletedAt = note.deletedAt
+                )
+            }
 
         if (preserveNotes) {
             repo.noteDao.moveNotesInFoldersToTopLevel(subtreeIds.toList(), now)
@@ -167,7 +226,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         } else {
-            repo.noteDao.deleteNotesInFolders(subtreeIds.toList())
+            repo.noteDao.softDeleteNotesInFolders(subtreeIds.toList(), now)
             if (_currentNote.value?.folderId != null && subtreeIds.contains(_currentNote.value?.folderId)) {
                 _currentNote.value = null
                 prefs.edit().remove("last_note_id").apply()
@@ -183,6 +242,14 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         if (_currentFolderId.value != null && subtreeIds.contains(_currentFolderId.value)) {
             _currentFolderId.value = folder.parentFolderId
         }
+
+        pushUndoAction(
+            UndoAction.FolderDeletion(
+                folderSnapshots = snapshotFolders,
+                noteSnapshots = noteSnapshots
+            )
+        )
+        refreshRecentlyDeletedNotes()
     }
 
     private fun depth(folder: Folder, byId: Map<Int, Folder>): Int {
@@ -249,14 +316,72 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteNote(note: Note) = viewModelScope.launch {
+        val snapshot = NoteDeletionSnapshot(
+            noteId = note.id,
+            previousDeletedAt = note.deletedAt,
+            previousFolderId = note.folderId
+        )
         val updated = note.copy(
             lastModified = System.currentTimeMillis(),
             deletedAt = System.currentTimeMillis()
         )
         repo.noteDao.update(updated)
+        pushUndoAction(UndoAction.NoteDeletion(snapshot))
         if (_currentNote.value?.id == note.id) {
             _currentNote.value = null
             prefs.edit().remove("last_note_id").apply()
+        }
+        refreshRecentlyDeletedNotes()
+    }
+
+    fun undoLastAction() = viewModelScope.launch {
+        val action = popUndoAction() ?: return@launch
+        when (action) {
+            is UndoAction.NoteDeletion -> {
+                val note = repo.noteDao.getByIdIncludingDeleted(action.snapshot.noteId) ?: return@launch
+                repo.noteDao.update(
+                    note.copy(
+                        deletedAt = action.snapshot.previousDeletedAt,
+                        folderId = action.snapshot.previousFolderId,
+                        lastModified = System.currentTimeMillis()
+                    )
+                )
+            }
+
+            is UndoAction.FolderDeletion -> {
+                val foldersById = action.folderSnapshots.associateBy { it.id }
+                action.folderSnapshots
+                    .sortedBy { depth(it, foldersById) }
+                    .forEach { folderSnapshot ->
+                        repo.folderDao.upsert(folderSnapshot)
+                    }
+
+                action.noteSnapshots.forEach { noteSnapshot ->
+                    val note = repo.noteDao.getByIdIncludingDeleted(noteSnapshot.noteId) ?: return@forEach
+                    repo.noteDao.update(
+                        note.copy(
+                            folderId = noteSnapshot.previousFolderId,
+                            deletedAt = noteSnapshot.previousDeletedAt,
+                            lastModified = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+
+            is UndoAction.NoteContent -> {
+                val note = repo.noteDao.getByIdIncludingDeleted(action.noteId)
+                if (note != null && note.deletedAt == null) {
+                    val restored = note.copy(
+                        title = action.previousTitle,
+                        content = action.previousContent,
+                        lastModified = System.currentTimeMillis()
+                    )
+                    repo.noteDao.update(restored)
+                    if (_currentNote.value?.id == restored.id) {
+                        _currentNote.value = restored
+                    }
+                }
+            }
         }
         refreshRecentlyDeletedNotes()
     }
@@ -277,11 +402,39 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
 
     fun permanentlyDeleteNote(note: Note) = viewModelScope.launch {
         repo.noteDao.delete(note)
+        removeUndoReferencesForNote(note.id)
         if (_currentNote.value?.id == note.id) {
             _currentNote.value = null
             prefs.edit().remove("last_note_id").apply()
         }
         refreshRecentlyDeletedNotes()
+    }
+
+    private fun pushUndoAction(action: UndoAction) {
+        undoStack.addLast(action)
+        if (undoStack.size > 200) {
+            undoStack.removeFirst()
+        }
+        _canUndoActions.value = undoStack.isNotEmpty()
+    }
+
+    private fun popUndoAction(): UndoAction? {
+        val action = undoStack.removeLastOrNull()
+        _canUndoActions.value = undoStack.isNotEmpty()
+        return action
+    }
+
+    private fun removeUndoReferencesForNote(noteId: Int) {
+        val filtered = undoStack.filterNot { action ->
+            when (action) {
+                is UndoAction.NoteDeletion -> action.snapshot.noteId == noteId
+                is UndoAction.FolderDeletion -> action.noteSnapshots.any { it.noteId == noteId }
+                is UndoAction.NoteContent -> action.noteId == noteId
+            }
+        }
+        undoStack.clear()
+        undoStack.addAll(filtered)
+        _canUndoActions.value = undoStack.isNotEmpty()
     }
 
     private suspend fun purgeExpiredDeletedNotes() {
@@ -369,6 +522,39 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         }
         return segments.reversed()
     }
+}
+
+private sealed interface UndoAction {
+    data class NoteDeletion(val snapshot: NoteDeletionSnapshot) : UndoAction
+    data class FolderDeletion(
+        val folderSnapshots: List<Folder>,
+        val noteSnapshots: List<NoteFolderSnapshot>
+    ) : UndoAction
+    data class NoteContent(
+        val noteId: Int,
+        val previousTitle: String,
+        val previousContent: String
+    ) : UndoAction
+}
+
+private data class NoteDeletionSnapshot(
+    val noteId: Int,
+    val previousDeletedAt: Long?,
+    val previousFolderId: Int?
+)
+
+private data class NoteFolderSnapshot(
+    val noteId: Int,
+    val previousFolderId: Int?,
+    val previousDeletedAt: Long?
+)
+
+internal fun sortNotesForDisplay(notes: List<Note>): List<Note> {
+    return notes.sortedWith(
+        compareByDescending<Note> { it.isPinned }
+            .thenByDescending { it.lastModified }
+            .thenByDescending { it.createdAt }
+    )
 }
 
 internal fun computeFolderActiveNoteCounts(
