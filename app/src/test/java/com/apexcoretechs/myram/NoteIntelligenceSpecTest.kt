@@ -107,7 +107,16 @@ class NoteIntelligenceSpecTest {
     }
 
     private fun repoRoot(): File {
-        return File(System.getProperty("user.dir"))
+        val start = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        var current: File? = start
+        while (current != null) {
+            val candidate = File(current, "docs/note-intelligence")
+            if (candidate.exists()) {
+                return current
+            }
+            current = current.parentFile
+        }
+        return start
     }
 
     private fun JSONArray.toStringSet(): Set<String> {
