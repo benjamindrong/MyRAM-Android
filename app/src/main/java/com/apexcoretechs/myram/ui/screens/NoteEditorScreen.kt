@@ -291,6 +291,7 @@ fun NoteEditorScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val attachments by vm.noteAttachments(note?.id).collectAsState(initial = emptyList())
+    val canUndoActions by vm.canUndoActions.collectAsState()
     val expandedAttachment = remember(attachments, expandedAttachmentId) {
         attachments.firstOrNull { it.id == expandedAttachmentId }
     }
@@ -322,7 +323,16 @@ fun NoteEditorScreen(
 
     fun flushPendingUndoSnapshot() {
         undoJob?.cancel()
-        pendingUndoSnapshot?.let(::pushUndoSnapshot)
+        pendingUndoSnapshot?.let { snapshot ->
+            pushUndoSnapshot(snapshot)
+            note?.let { current ->
+                vm.recordTextUndoSnapshot(
+                    note = current,
+                    previousTitle = snapshot.title.text,
+                    previousContent = snapshot.content.text
+                )
+            }
+        }
         pendingUndoSnapshot = null
     }
 
@@ -341,13 +351,17 @@ fun NoteEditorScreen(
 
     fun undoLastEdit() {
         flushPendingUndoSnapshot()
-        val snapshot = undoHistory.lastOrNull() ?: return
-        undoHistory = undoHistory.dropLast(1)
-        isRestoringUndo = true
-        hasEditedCurrentNote = true
-        title = snapshot.title
-        content = snapshot.content
-        isRestoringUndo = false
+        val snapshot = undoHistory.lastOrNull()
+        if (snapshot != null) {
+            undoHistory = undoHistory.dropLast(1)
+            isRestoringUndo = true
+            hasEditedCurrentNote = true
+            title = snapshot.title
+            content = snapshot.content
+            isRestoringUndo = false
+        } else {
+            vm.undoLastAction()
+        }
     }
 
     fun applyToFocusedField(transform: (TextFieldValue) -> TextFieldValue) {
@@ -423,7 +437,7 @@ fun NoteEditorScreen(
                 actions = {
                     TextButton(
                         onClick = ::undoLastEdit,
-                        enabled = undoHistory.isNotEmpty() || pendingUndoSnapshot != null
+                        enabled = undoHistory.isNotEmpty() || pendingUndoSnapshot != null || canUndoActions
                     ) {
                         Text("Undo")
                     }

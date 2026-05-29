@@ -12,6 +12,9 @@ interface FolderDao {
     @Insert
     suspend fun insert(folder: Folder): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(folder: Folder)
+
     @Update
     suspend fun update(folder: Folder)
 

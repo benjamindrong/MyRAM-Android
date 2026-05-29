@@ -1,89 +1,75 @@
-# MyRAM Android
+# MyRAM
 
-MyRAM is a native Android notes app for quickly capturing, editing, and returning to personal notes with as little friction as possible.
+MyRAM catches what your brain drops, then helps you make sense of it later.
 
-This repository contains the Android implementation. The matching iOS app lives in the MyRAM iOS repository.
+ADHD-friendly hook: "Dump it now, make sense of it later."
 
----
+## What MyRAM Is
 
-# Current Direction
+MyRAM is a personal notes app designed as an external working-memory system.
 
-MyRAM focuses on:
-- fast note creation
-- low-friction editing
-- auto-save while typing
-- reopening the last active note
-- creating a new note without leaving the editor
-- keeping editor focus stable while the keyboard is visible
+The name comes from the idea of computer RAM: temporary, active memory that helps hold information while something is still being processed. MyRAM applies that idea to notes, screenshots, fragments, copied text, and ideas users do not want to lose.
 
-The app is designed around quick capture and continued editing rather than folder-heavy organization.
+Core idea:
 
----
+> Dump it now. Make sense of it later.
 
-# Design Philosophy
+## Current Features
 
-The user should be able to:
-- open the app and continue where they left off
-- type without thinking about saving
-- create a new note as soon as a new thought appears
-- delete notes without leaving the current workflow
-- keep the cursor and active text visible while editing
+MyRAM currently supports:
 
-There are currently no:
-- folder systems
-- manual save flows
-- sync requirements
-- account requirements
+- Notes on Android and iOS
+- Basic text editing
+- Always-available mobile editing controls
+- Export and share
+- Picture attachments
+- Copying and pasting text from pictures using OCR
 
-Editing should feel immediate, local, and predictable.
+Desktop support is planned later for parity.
 
----
+## Product Positioning
 
-# Technical Direction
+MyRAM is not just another notes app. It is built for fast capture now and organization later, when the user has more time, attention, or context.
 
-MyRAM Android is built using:
-- Kotlin
-- Jetpack Compose
-- Material 3
-- Room
-- Kotlin coroutines and Flow
-- Gradle Kotlin DSL
+Main positioning line:
 
-The Android and iOS apps are native implementations of the same product direction. They are intentionally not a shared multiplatform codebase.
+> MyRAM catches what your brain drops, then helps you make sense of it later.
 
----
+Alternative shorter line:
 
-# Current App Goals
+> External memory for scattered thoughts.
 
-Current development focuses on:
-- reliable editor behavior
-- stable note switching
-- predictable auto-save
-- native platform editing controls
-- simple local persistence
+## Signature Concept: Defrag
 
-The current milestone is making note capture and editing feel dependable before expanding into encrypted export, recently deleted notes, desktop support, or cross-device workflows.
+Defrag is a main future feature direction for MyRAM.
 
----
+Inspired by computer defragmentation, Defrag helps users review scattered notes, fragments, images, and extracted text so they can turn them into clearer notes or grouped information.
 
-# Planned Structure
+For MyRAM, Defrag means:
 
-```text
-app/
-    src/main/java/com/apexcoretechs/myram/
-        data/
-        ui/
-        ui/screens/
+> Turn scattered memory fragments into usable notes, bundles, and follow-ups.
 
-app/src/main/res/
-```
+Defrag is intended to feel calm, optional, and user-controlled.
 
----
+## Product Vocabulary
 
-# Build
+Suggested product terms:
 
-From the repository root:
+- **RAM Dump**: quick capture for raw thoughts, pasted text, screenshots, temporary notes, and fragments
+- **Defrag**: review mode for reorganizing scattered notes
+- **Recall**: search and retrieval
+- **Pinned RAM** or **Keep in View**: user-selected notes kept easier to access
+- **Note Bundles**: related notes, images, OCR text, and fragments grouped together
+- **Archive**: move notes out of the main view without deleting them
 
-```sh
-./gradlew assembleDebug
-```
+## Product Principle
+
+MyRAM should reduce decision pressure, not add more.
+
+The app may suggest structure, but the user decides what matters.
+
+## Repository Notes
+
+This repository contains the Android implementation of MyRAM.
+
+For development-specific implementation guidance, see [docs/DEVELOPMENT_INSTRUCTIONS.md](docs/DEVELOPMENT_INSTRUCTIONS.md).

@@ -1,7 +1,7 @@
 package com.apexcoretechs.myram.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +18,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -29,12 +31,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -44,8 +43,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -70,6 +67,8 @@ fun NotesListScreen(
     val currentFolder by vm.currentFolder.collectAsState()
     val currentFolderId by vm.currentFolderId.collectAsState()
     val recentlyDeletedNotes by vm.recentlyDeletedNotes.collectAsState()
+    val mainListTitle by vm.mainListTitle.collectAsState()
+    val canUndoActions by vm.canUndoActions.collectAsState()
 
     var actionsMenuExpanded by remember { mutableStateOf(false) }
     var appearanceMenuExpanded by remember { mutableStateOf(false) }
@@ -82,10 +81,18 @@ fun NotesListScreen(
     var renameFolderName by remember { mutableStateOf("") }
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
     var noteToMove by remember { mutableStateOf<Note?>(null) }
+    var noteToRename by remember { mutableStateOf<Note?>(null) }
+    var renameNoteName by remember { mutableStateOf("") }
+    var showingRenameMainListDialog by remember { mutableStateOf(false) }
+    var renameMainListTitle by remember { mutableStateOf(mainListTitle) }
+    var activeFolderMenuId by remember { mutableStateOf<Int?>(null) }
+    var activeNoteMenuId by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(showingRecentlyDeleted, currentFolderId) {
         selectionMode = false
         selectedNoteIds = emptySet()
+        activeFolderMenuId = null
+        activeNoteMenuId = null
         if (showingRecentlyDeleted) {
             vm.refreshRecentlyDeletedNotes()
         }
@@ -163,6 +170,83 @@ fun NotesListScreen(
                     onClick = {
                         folderToRename = null
                         renameFolderName = ""
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    noteToRename?.let { note ->
+        AlertDialog(
+            onDismissRequest = {
+                noteToRename = null
+                renameNoteName = ""
+            },
+            title = { Text("Rename Note") },
+            text = {
+                OutlinedTextField(
+                    value = renameNoteName,
+                    onValueChange = { renameNoteName = it },
+                    label = { Text("Note title") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.renameNote(note, renameNoteName)
+                        noteToRename = null
+                        renameNoteName = ""
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        noteToRename = null
+                        renameNoteName = ""
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showingRenameMainListDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showingRenameMainListDialog = false
+                renameMainListTitle = mainListTitle
+            },
+            title = { Text("Rename Main List") },
+            text = {
+                OutlinedTextField(
+                    value = renameMainListTitle,
+                    onValueChange = { renameMainListTitle = it },
+                    label = { Text("Main list title") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.renameMainListTitle(renameMainListTitle)
+                        showingRenameMainListDialog = false
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showingRenameMainListDialog = false
+                        renameMainListTitle = mainListTitle
                     }
                 ) {
                     Text("Cancel")
@@ -260,7 +344,7 @@ fun NotesListScreen(
     val screenTitle = when {
         showingRecentlyDeleted -> "Recently Deleted"
         currentFolder != null -> currentFolder!!.name
-        else -> "My Notes"
+        else -> mainListTitle
     }
 
     Scaffold(
@@ -303,15 +387,16 @@ fun NotesListScreen(
                                 Text("Export")
                             }
                         } else {
+                            TextButton(onClick = { vm.undoLastAction() }, enabled = canUndoActions) {
+                                Text("Undo")
+                            }
                             TextButton(onClick = { selectionMode = true }) {
                                 Text("Select")
                             }
                             TextButton(onClick = { showingRecentlyDeleted = true }) {
                                 Text("Deleted")
                             }
-                            IconButton(
-                                onClick = { actionsMenuExpanded = true }
-                            ) {
+                            IconButton(onClick = { actionsMenuExpanded = true }) {
                                 Icon(Icons.Filled.MoreVert, contentDescription = "More actions")
                             }
                             DropdownMenu(
@@ -330,16 +415,23 @@ fun NotesListScreen(
                                 DropdownMenuItem(
                                     text = { Text("New folder") },
                                     leadingIcon = {
-                                        Icon(
-                                            Icons.Filled.CreateNewFolder,
-                                            contentDescription = null
-                                        )
+                                        Icon(Icons.Filled.CreateNewFolder, contentDescription = null)
                                     },
                                     onClick = {
                                         actionsMenuExpanded = false
                                         showingCreateFolderDialog = true
                                     }
                                 )
+                                if (currentFolder == null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Rename Main List") },
+                                        onClick = {
+                                            actionsMenuExpanded = false
+                                            renameMainListTitle = mainListTitle
+                                            showingRenameMainListDialog = true
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("Appearance") },
                                     onClick = {
@@ -430,12 +522,21 @@ fun NotesListScreen(
                                 folder = folder,
                                 noteCount = folderActiveNoteCounts[folder.id] ?: 0,
                                 selectionMode = selectionMode,
+                                menuExpanded = activeFolderMenuId == folder.id,
                                 onOpen = { vm.openFolder(folder) },
+                                onOpenMenu = { activeFolderMenuId = folder.id },
+                                onDismissMenu = {
+                                    if (activeFolderMenuId == folder.id) activeFolderMenuId = null
+                                },
                                 onRename = {
+                                    activeFolderMenuId = null
                                     renameFolderName = folder.name
                                     folderToRename = folder
                                 },
-                                onDelete = { folderToDelete = folder }
+                                onDelete = {
+                                    activeFolderMenuId = null
+                                    folderToDelete = folder
+                                }
                             )
                         }
                     }
@@ -446,6 +547,7 @@ fun NotesListScreen(
                             showingRecentlyDeleted = showingRecentlyDeleted,
                             selectionMode = selectionMode,
                             selected = selectedNoteIds.contains(note.id),
+                            menuExpanded = activeNoteMenuId == note.id,
                             onNoteSelected = onNoteSelected,
                             onSelectionToggled = { toggled ->
                                 selectedNoteIds = if (selectedNoteIds.contains(toggled.id)) {
@@ -454,8 +556,31 @@ fun NotesListScreen(
                                     selectedNoteIds + toggled.id
                                 }
                             },
-                            onMove = { noteToMove = note },
-                            onSoftDelete = vm::deleteNote,
+                            onOpenMenu = { activeNoteMenuId = note.id },
+                            onDismissMenu = {
+                                if (activeNoteMenuId == note.id) activeNoteMenuId = null
+                            },
+                            onTogglePinned = {
+                                activeNoteMenuId = null
+                                vm.setNotePinned(note, !note.isPinned)
+                            },
+                            onRename = {
+                                activeNoteMenuId = null
+                                noteToRename = note
+                                renameNoteName = note.title
+                            },
+                            onMove = {
+                                activeNoteMenuId = null
+                                noteToMove = note
+                            },
+                            onExport = {
+                                activeNoteMenuId = null
+                                onExportSelectedNotes(listOf(note))
+                            },
+                            onSoftDelete = {
+                                activeNoteMenuId = null
+                                vm.deleteNote(note)
+                            },
                             onRestore = vm::restoreNote,
                             onPermanentDelete = vm::permanentlyDeleteNote
                         )
@@ -466,80 +591,47 @@ fun NotesListScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FolderListRow(
     folder: Folder,
     noteCount: Int,
     selectionMode: Boolean,
+    menuExpanded: Boolean,
     onOpen: () -> Unit,
+    onOpenMenu: () -> Unit,
+    onDismissMenu: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val cardShape = MaterialTheme.shapes.medium
-    val dismissState = rememberSwipeToDismissBoxState(
-        positionalThreshold = { distance -> distance * 0.25f },
-        confirmValueChange = { value ->
-            if (selectionMode) return@rememberSwipeToDismissBoxState false
-            when (value) {
-                SwipeToDismissBoxValue.StartToEnd -> {
-                    onRename()
-                    false
-                }
-                SwipeToDismissBoxValue.EndToStart -> {
-                    onDelete()
-                    true
-                }
-                else -> false
-            }
-        }
-    )
-
-    SwipeToDismissBox(
-        modifier = Modifier.padding(vertical = 4.dp),
-        state = dismissState,
-        enableDismissFromStartToEnd = !selectionMode,
-        enableDismissFromEndToStart = !selectionMode,
-        backgroundContent = {
-            val direction = dismissState.dismissDirection
-            val label = if (direction == SwipeToDismissBoxValue.StartToEnd) "Rename" else "Delete"
-            val color = if (direction == SwipeToDismissBoxValue.StartToEnd) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.error
-            }
-            val alignment = if (direction == SwipeToDismissBoxValue.StartToEnd) {
-                Alignment.CenterStart
-            } else {
-                Alignment.CenterEnd
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(cardShape)
-                    .background(color),
-                contentAlignment = alignment
-            ) {
-                Text(
-                    text = label,
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-    ) {
+    Box(modifier = Modifier.padding(vertical = 4.dp)) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = !selectionMode, onClick = onOpen),
-            shape = cardShape
+                .combinedClickable(
+                    onClick = {
+                        if (!selectionMode) {
+                            onOpen()
+                        }
+                    },
+                    onLongClick = {
+                        if (!selectionMode) {
+                            onOpenMenu()
+                        }
+                    }
+                ),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            )
         ) {
             Row(
                 modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Folder, contentDescription = null)
+                Icon(
+                    Icons.Filled.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
                 Spacer(Modifier.width(8.dp))
                 Text(folder.name, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.weight(1f))
@@ -551,101 +643,66 @@ private fun FolderListRow(
                 )
             }
         }
+
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = onDismissMenu
+        ) {
+            DropdownMenuItem(text = { Text("Rename") }, onClick = onRename)
+            DropdownMenuItem(
+                text = { Text("Delete") },
+                onClick = onDelete
+            )
+        }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NoteListRow(
     note: Note,
     showingRecentlyDeleted: Boolean,
     selectionMode: Boolean,
     selected: Boolean,
+    menuExpanded: Boolean,
     onNoteSelected: (Note?) -> Unit,
     onSelectionToggled: (Note) -> Unit,
-    onMove: (Note) -> Unit,
-    onSoftDelete: (Note) -> Unit,
+    onOpenMenu: () -> Unit,
+    onDismissMenu: () -> Unit,
+    onTogglePinned: () -> Unit,
+    onRename: () -> Unit,
+    onMove: () -> Unit,
+    onExport: () -> Unit,
+    onSoftDelete: () -> Unit,
     onRestore: (Note) -> Unit,
     onPermanentDelete: (Note) -> Unit
 ) {
-    val cardShape = MaterialTheme.shapes.medium
-    val dismissState = rememberSwipeToDismissBoxState(
-        positionalThreshold = { distance -> distance * 0.25f },
-        confirmValueChange = { value ->
-            if (selectionMode) return@rememberSwipeToDismissBoxState false
-            when {
-                !showingRecentlyDeleted && value == SwipeToDismissBoxValue.StartToEnd -> {
-                    onMove(note)
-                    false
-                }
-                !showingRecentlyDeleted && value == SwipeToDismissBoxValue.EndToStart -> {
-                    onSoftDelete(note)
-                    true
-                }
-                showingRecentlyDeleted && value == SwipeToDismissBoxValue.StartToEnd -> {
-                    onRestore(note)
-                    true
-                }
-                showingRecentlyDeleted && value == SwipeToDismissBoxValue.EndToStart -> {
-                    onPermanentDelete(note)
-                    true
-                }
-                else -> false
-            }
-        }
-    )
+    val containerColor = if (note.isPinned) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+    }
 
-    SwipeToDismissBox(
-        modifier = Modifier.padding(vertical = 4.dp),
-        state = dismissState,
-        enableDismissFromStartToEnd = !selectionMode,
-        enableDismissFromEndToStart = !selectionMode,
-        backgroundContent = {
-            val direction = dismissState.dismissDirection
-            val isRestore = showingRecentlyDeleted && direction == SwipeToDismissBoxValue.StartToEnd
-            val isMove = !showingRecentlyDeleted && direction == SwipeToDismissBoxValue.StartToEnd
-            val label = when {
-                isRestore -> "Restore"
-                isMove -> "Move"
-                else -> "Delete"
-            }
-            val color = when {
-                isRestore || isMove -> MaterialTheme.colorScheme.primary
-                else -> MaterialTheme.colorScheme.error
-            }
-            val alignment = if (direction == SwipeToDismissBoxValue.StartToEnd) {
-                Alignment.CenterStart
-            } else {
-                Alignment.CenterEnd
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(cardShape)
-                    .background(color),
-                contentAlignment = alignment
-            ) {
-                Text(
-                    text = label,
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-    ) {
+    Box(modifier = Modifier.padding(vertical = 4.dp)) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = !showingRecentlyDeleted) {
-                    if (selectionMode) {
-                        onSelectionToggled(note)
-                    } else {
-                        onNoteSelected(note)
+                .combinedClickable(
+                    onClick = {
+                        if (!showingRecentlyDeleted) {
+                            if (selectionMode) {
+                                onSelectionToggled(note)
+                            } else {
+                                onNoteSelected(note)
+                            }
+                        }
+                    },
+                    onLongClick = {
+                        if (!selectionMode && !showingRecentlyDeleted) {
+                            onOpenMenu()
+                        }
                     }
-                },
-            shape = cardShape
+                ),
+            colors = CardDefaults.cardColors(containerColor = containerColor)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -661,12 +718,28 @@ private fun NoteListRow(
                         Text("Selected", style = MaterialTheme.typography.bodySmall)
                     }
                 }
-                Text(note.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium)
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        note.title.ifBlank { "Untitled" },
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (note.isPinned) {
+                        Icon(
+                            imageVector = Icons.Filled.PushPin,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
                 Text(
                     note.content.take(120),
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 2
                 )
+
                 if (showingRecentlyDeleted) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -680,6 +753,25 @@ private fun NoteListRow(
                         }
                     }
                 }
+            }
+        }
+
+        if (!showingRecentlyDeleted) {
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = onDismissMenu
+            ) {
+                DropdownMenuItem(
+                    text = { Text(if (note.isPinned) "Unpin" else "Pin") },
+                    onClick = onTogglePinned
+                )
+                DropdownMenuItem(text = { Text("Rename") }, onClick = onRename)
+                DropdownMenuItem(text = { Text("Move to folder") }, onClick = onMove)
+                DropdownMenuItem(text = { Text("Export") }, onClick = onExport)
+                DropdownMenuItem(
+                    text = { Text("Delete", fontWeight = FontWeight.SemiBold) },
+                    onClick = onSoftDelete
+                )
             }
         }
     }
