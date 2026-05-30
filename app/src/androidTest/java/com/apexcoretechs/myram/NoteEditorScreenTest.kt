@@ -53,7 +53,7 @@ class NoteEditorScreenTest {
     }
 
     @Test
-    fun longPressNote_showsFloatingPreview() {
+    fun longPressNote_showsPreviewAndActions() {
         openNewNote()
         composeRule.onNodeWithContentDescription("Back").performClick()
 
@@ -71,5 +71,7 @@ class NoteEditorScreenTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("note-preview-dialog").assertIsDisplayed()
+        composeRule.onNodeWithText("Move to folder").assertIsDisplayed()
+        composeRule.onNodeWithText("Export").assertIsDisplayed()
     }
 }

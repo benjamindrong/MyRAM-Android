@@ -92,13 +92,11 @@ fun NotesListScreen(
     var showingRenameMainListDialog by remember { mutableStateOf(false) }
     var renameMainListTitle by remember { mutableStateOf(mainListTitle) }
     var activeFolderMenuId by remember { mutableStateOf<Int?>(null) }
-    var activeNoteMenuId by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(showingRecentlyDeleted, currentFolderId) {
         selectionMode = false
         selectedNoteIds = emptySet()
         activeFolderMenuId = null
-        activeNoteMenuId = null
         previewedNote = null
         if (showingRecentlyDeleted) {
             vm.refreshRecentlyDeletedNotes()
@@ -515,7 +513,6 @@ fun NotesListScreen(
                             showingRecentlyDeleted = showingRecentlyDeleted,
                             selectionMode = selectionMode,
                             selected = selectedNoteIds.contains(note.id),
-                            menuExpanded = activeNoteMenuId == note.id,
                             onNoteSelected = onNoteSelected,
                             onSelectionToggled = { toggled ->
                                 selectedNoteIds = if (selectedNoteIds.contains(toggled.id)) {
@@ -525,26 +522,6 @@ fun NotesListScreen(
                                 }
                             },
                             onPreviewRequested = { previewedNote = it },
-                            onOpenMenu = { activeNoteMenuId = note.id },
-                            onDismissMenu = {
-                                if (activeNoteMenuId == note.id) activeNoteMenuId = null
-                            },
-                            onTogglePinned = {
-                                activeNoteMenuId = null
-                                vm.setNotePinned(note, !note.isPinned)
-                            },
-                            onMove = {
-                                activeNoteMenuId = null
-                                noteToMove = note
-                            },
-                            onExport = {
-                                activeNoteMenuId = null
-                                onExportSelectedNotes(listOf(note))
-                            },
-                            onSoftDelete = {
-                                activeNoteMenuId = null
-                                vm.deleteNote(note)
-                            },
                             onRestore = vm::restoreNote,
                             onPermanentDelete = vm::permanentlyDeleteNote
                         )
@@ -557,7 +534,23 @@ fun NotesListScreen(
     previewedNote?.let { note ->
         NotePreviewDialog(
             note = note,
-            onDismiss = { previewedNote = null }
+            onDismiss = { previewedNote = null },
+            onTogglePinned = {
+                vm.setNotePinned(note, !note.isPinned)
+                previewedNote = null
+            },
+            onMove = {
+                noteToMove = note
+                previewedNote = null
+            },
+            onExport = {
+                onExportSelectedNotes(listOf(note))
+                previewedNote = null
+            },
+            onDelete = {
+                vm.deleteNote(note)
+                previewedNote = null
+            }
         )
     }
 }
@@ -634,16 +627,9 @@ private fun NoteListRow(
     showingRecentlyDeleted: Boolean,
     selectionMode: Boolean,
     selected: Boolean,
-    menuExpanded: Boolean,
     onNoteSelected: (Note?) -> Unit,
     onSelectionToggled: (Note) -> Unit,
     onPreviewRequested: (Note) -> Unit,
-    onOpenMenu: () -> Unit,
-    onDismissMenu: () -> Unit,
-    onTogglePinned: () -> Unit,
-    onMove: () -> Unit,
-    onExport: () -> Unit,
-    onSoftDelete: () -> Unit,
     onRestore: (Note) -> Unit,
     onPermanentDelete: (Note) -> Unit
 ) {
@@ -696,14 +682,6 @@ private fun NoteListRow(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f)
                     )
-                    if (!selectionMode && !showingRecentlyDeleted) {
-                        IconButton(onClick = onOpenMenu) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "Note actions"
-                            )
-                        }
-                    }
                     if (note.isPinned) {
                         Icon(
                             imageVector = Icons.Filled.PushPin,
@@ -734,31 +712,17 @@ private fun NoteListRow(
                 }
             }
         }
-
-        if (!showingRecentlyDeleted) {
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = onDismissMenu
-            ) {
-                DropdownMenuItem(
-                    text = { Text(if (note.isPinned) "Unpin" else "Pin") },
-                    onClick = onTogglePinned
-                )
-                DropdownMenuItem(text = { Text("Move to folder") }, onClick = onMove)
-                DropdownMenuItem(text = { Text("Export") }, onClick = onExport)
-                DropdownMenuItem(
-                    text = { Text("Delete", fontWeight = FontWeight.SemiBold) },
-                    onClick = onSoftDelete
-                )
-            }
-        }
     }
 }
 
 @Composable
 private fun NotePreviewDialog(
     note: Note,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onTogglePinned: () -> Unit,
+    onMove: () -> Unit,
+    onExport: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -769,8 +733,9 @@ private fun NotePreviewDialog(
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp)
+                    .fillMaxSize()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     text = note.title.ifBlank { "Untitled" },
@@ -778,11 +743,10 @@ private fun NotePreviewDialog(
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
+                        .weight(1f)
                         .fillMaxWidth()
-                        .weight(1f, fill = true)
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
@@ -790,6 +754,27 @@ private fun NotePreviewDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onTogglePinned) {
+                        Text(if (note.isPinned) "Unpin" else "Pin")
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    TextButton(onClick = onMove) {
+                        Text("Move to folder")
+                    }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onExport) {
+                        Text("Export")
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDelete) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
