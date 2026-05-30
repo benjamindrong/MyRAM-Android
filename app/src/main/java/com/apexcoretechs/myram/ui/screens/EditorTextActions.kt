@@ -35,3 +35,12 @@ internal fun pasteIntoSelection(value: TextFieldValue, pastedText: String): Text
 internal fun selectAllText(value: TextFieldValue): TextFieldValue {
     return value.copy(selection = TextRange(0, value.text.length))
 }
+
+internal fun toggleSelectAllText(value: TextFieldValue): TextFieldValue {
+    val fullSelection = TextRange(0, value.text.length)
+    return if (value.selection == fullSelection && value.text.isNotEmpty()) {
+        value.copy(selection = TextRange(value.text.length))
+    } else {
+        value.copy(selection = fullSelection)
+    }
+}

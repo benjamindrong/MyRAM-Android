@@ -6,6 +6,7 @@ import com.apexcoretechs.myram.ui.screens.copySelectedText
 import com.apexcoretechs.myram.ui.screens.cutSelectedText
 import com.apexcoretechs.myram.ui.screens.pasteIntoSelection
 import com.apexcoretechs.myram.ui.screens.selectAllText
+import com.apexcoretechs.myram.ui.screens.toggleSelectAllText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -58,5 +59,23 @@ class EditorTextActionsTest {
         val updated = selectAllText(value)
 
         assertEquals(TextRange(0, 7), updated.selection)
+    }
+
+    @Test
+    fun toggleSelectAllText_selectsAllWhenNotFullySelected() {
+        val value = TextFieldValue("Compose", selection = TextRange(2))
+
+        val updated = toggleSelectAllText(value)
+
+        assertEquals(TextRange(0, 7), updated.selection)
+    }
+
+    @Test
+    fun toggleSelectAllText_collapsesSelectionWhenFullySelected() {
+        val value = TextFieldValue("Compose", selection = TextRange(0, 7))
+
+        val updated = toggleSelectAllText(value)
+
+        assertEquals(TextRange(7), updated.selection)
     }
 }

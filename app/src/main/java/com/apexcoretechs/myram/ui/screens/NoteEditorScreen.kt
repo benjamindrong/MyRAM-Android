@@ -1,6 +1,7 @@
 package com.apexcoretechs.myram.ui.screens
 
 import android.graphics.BitmapFactory
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,15 +26,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -65,6 +69,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -229,11 +234,11 @@ private fun AttachmentInlineActions(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier
             .clip(RoundedCornerShape(100))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
-            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
     ) {
         InlineIconAction(Icons.Filled.KeyboardHide, "Hide keyboard", onDismissKeyboard)
         InlineIconAction(Icons.Filled.ContentCut, "Cut", onCut)
@@ -251,12 +256,12 @@ private fun InlineIconAction(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = Modifier.size(24.dp)
+        modifier = Modifier.size(30.dp)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            modifier = Modifier.size(14.dp),
+            modifier = Modifier.size(18.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
@@ -274,6 +279,7 @@ fun NoteEditorScreen(
     var title by remember(note?.id) { mutableStateOf(TextFieldValue(note?.title ?: "")) }
     var content by remember(note?.id) { mutableStateOf(TextFieldValue(note?.content ?: "")) }
     var undoHistory by remember(note?.id) { mutableStateOf<List<EditorSnapshot>>(emptyList()) }
+    var redoHistory by remember(note?.id) { mutableStateOf<List<EditorSnapshot>>(emptyList()) }
     var pendingUndoSnapshot by remember(note?.id) { mutableStateOf<EditorSnapshot?>(null) }
     var saveJob by remember { mutableStateOf<Job?>(null) }
     var undoJob by remember { mutableStateOf<Job?>(null) }
@@ -284,9 +290,12 @@ fun NoteEditorScreen(
     var expandedAttachmentId by remember(note?.id) { mutableStateOf<Long?>(null) }
     var focusedField by remember(note?.id) { mutableStateOf<EditorField?>(null) }
     var previousAttachmentCount by remember(note?.id) { mutableIntStateOf(0) }
+    var showingTitleEditor by remember(note?.id) { mutableStateOf(false) }
+    var titleDraft by remember(note?.id) { mutableStateOf(title.text) }
 
     val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -342,6 +351,7 @@ fun NoteEditorScreen(
         if (pendingUndoSnapshot == null) {
             pendingUndoSnapshot = snapshot
         }
+        redoHistory = emptyList()
         undoJob?.cancel()
         undoJob = scope.launch {
             delay(800)
@@ -354,7 +364,9 @@ fun NoteEditorScreen(
         flushPendingUndoSnapshot()
         val snapshot = undoHistory.lastOrNull()
         if (snapshot != null) {
+            val current = currentSnapshot()
             undoHistory = undoHistory.dropLast(1)
+            redoHistory = redoHistory + current
             isRestoringUndo = true
             hasEditedCurrentNote = true
             title = snapshot.title
@@ -365,12 +377,47 @@ fun NoteEditorScreen(
         }
     }
 
-    fun applyToFocusedField(transform: (TextFieldValue) -> TextFieldValue) {
-        when (focusedField) {
-            EditorField.TITLE -> title = transform(title)
-            EditorField.CONTENT, null -> content = transform(content)
-        }
+    fun redoLastEdit() {
+        flushPendingUndoSnapshot()
+        val snapshot = redoHistory.lastOrNull() ?: return
+        val current = currentSnapshot()
+        redoHistory = redoHistory.dropLast(1)
+        undoHistory = (undoHistory + current).takeLast(200)
+        isRestoringUndo = true
         hasEditedCurrentNote = true
+        title = snapshot.title
+        content = snapshot.content
+        isRestoringUndo = false
+    }
+
+    fun applyToFocusedField(
+        markEdited: Boolean,
+        transform: (TextFieldValue) -> TextFieldValue
+    ) {
+        val snapshot = if (markEdited) currentSnapshot() else null
+        when (focusedField) {
+            EditorField.TITLE -> {
+                val updated = transform(title)
+                if (updated != title) {
+                    if (markEdited && snapshot != null) {
+                        scheduleUndoSnapshot(snapshot)
+                    }
+                    title = updated
+                }
+            }
+            EditorField.CONTENT, null -> {
+                val updated = transform(content)
+                if (updated != content) {
+                    if (markEdited && snapshot != null) {
+                        scheduleUndoSnapshot(snapshot)
+                    }
+                    content = updated
+                }
+            }
+        }
+        if (markEdited) {
+            hasEditedCurrentNote = true
+        }
     }
 
     fun copyFromFocused() {
@@ -380,6 +427,7 @@ fun NoteEditorScreen(
         }
         val copied = copySelectedText(source) ?: return
         clipboardManager.setText(AnnotatedString(copied))
+        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
     }
 
     fun cutFromFocused() {
@@ -389,18 +437,26 @@ fun NoteEditorScreen(
         }
         val (updated, cutText) = cutSelectedText(source)
         if (cutText.isNullOrEmpty()) return
-        applyToFocusedField { updated }
+        applyToFocusedField(markEdited = true) { updated }
         clipboardManager.setText(AnnotatedString(cutText))
     }
 
     fun pasteIntoFocused() {
         val pastedText = clipboardManager.getText()?.text?.toString().orEmpty()
         if (pastedText.isEmpty()) return
-        applyToFocusedField { current -> pasteIntoSelection(current, pastedText) }
+        applyToFocusedField(markEdited = true) { current -> pasteIntoSelection(current, pastedText) }
     }
 
     fun selectAllFocused() {
-        applyToFocusedField(::selectAllText)
+        applyToFocusedField(markEdited = false, transform = ::toggleSelectAllText)
+    }
+
+    fun saveTitleEdit() {
+        val trimmed = titleDraft.trim()
+        if (trimmed == title.text) return
+        scheduleUndoSnapshot(currentSnapshot())
+        hasEditedCurrentNote = true
+        title = title.copy(text = trimmed, selection = TextRange(trimmed.length))
     }
 
     // Auto-save with debounce
@@ -444,6 +500,36 @@ fun NoteEditorScreen(
         )
     }
 
+    if (showingTitleEditor) {
+        AlertDialog(
+            onDismissRequest = { showingTitleEditor = false },
+            title = { Text("Edit Title") },
+            text = {
+                OutlinedTextField(
+                    value = titleDraft,
+                    onValueChange = { titleDraft = it },
+                    label = { Text("Title") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        saveTitleEdit()
+                        showingTitleEditor = false
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showingTitleEditor = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -454,6 +540,14 @@ fun NoteEditorScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = ::redoLastEdit,
+                        enabled = redoHistory.isNotEmpty(),
+                        modifier = Modifier.testTag("redo-button")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
+                    }
+
                     TextButton(
                         onClick = ::undoLastEdit,
                         enabled = undoHistory.isNotEmpty() || pendingUndoSnapshot != null || canUndoActions
@@ -535,24 +629,44 @@ fun NoteEditorScreen(
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
-            OutlinedTextField(
-                value = title,
-                onValueChange = {
-                    if (it != title) {
-                        scheduleUndoSnapshot(currentSnapshot())
-                    }
-                    hasEditedCurrentNote = true
-                    title = it
-                },
-                placeholder = { Text("Title") },
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onFocusChanged { focusState ->
-                        if (focusState.isFocused) focusedField = EditorField.TITLE
-                    }
-            )
+                    .testTag("edit-note-title")
+                    .clickable {
+                        titleDraft = title.text
+                        showingTitleEditor = true
+                    },
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title.text.ifBlank { "Untitled" },
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (title.text.isBlank()) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 2
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Edit title",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
 
             Box(
                 modifier = Modifier
