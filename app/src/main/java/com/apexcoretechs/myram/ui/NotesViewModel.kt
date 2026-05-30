@@ -12,6 +12,7 @@ import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
 import com.apexcoretechs.myram.data.Repository
 import com.apexcoretechs.myram.export.NoteExporter
+import com.apexcoretechs.myram.intelligence.NoteIntelligenceService
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,7 @@ import kotlinx.coroutines.withContext
 class NotesViewModel(app: Application) : AndroidViewModel(app) {
     private val recentlyDeletedRetentionMillis = 7L * 24 * 60 * 60 * 1000
     val repo = Repository.get(getApplication())
+    private val noteIntelligenceService = NoteIntelligenceService(app)
 
     private val _currentFolderId = MutableStateFlow<Int?>(null)
     val currentFolderId: StateFlow<Int?> = _currentFolderId.asStateFlow()
@@ -63,6 +65,8 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _currentNote = MutableStateFlow<Note?>(null)
     val currentNote = _currentNote.asStateFlow()
+    private val _noteSuggestionLabels = MutableStateFlow<List<String>>(emptyList())
+    val noteSuggestionLabels = _noteSuggestionLabels.asStateFlow()
 
     private val _recentlyDeletedNotes = MutableStateFlow<List<Note>>(emptyList())
     val recentlyDeletedNotes = _recentlyDeletedNotes.asStateFlow()
@@ -98,16 +102,21 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         repo.noteDao.getById(lastNoteId).first()?.let { note ->
             _currentNote.value = note
             _currentFolderId.value = note.folderId
+            noteIntelligenceService.recordOpen(note.id)
+            refreshNoteSuggestions(note, note.title, note.content)
         }
     }
 
     fun selectNote(note: Note?) {
         _currentNote.value = note
         if (note == null) {
+            _noteSuggestionLabels.value = emptyList()
             prefs.edit().remove("last_note_id").apply()
             return
         }
         prefs.edit().putInt("last_note_id", note.id).apply()
+        noteIntelligenceService.recordOpen(note.id)
+        refreshNoteSuggestions(note, note.title, note.content)
     }
 
     fun openFolder(folder: Folder) {
@@ -142,6 +151,22 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         if (_currentNote.value?.id == updated.id) {
             _currentNote.value = updated
         }
+        noteIntelligenceService.recordEdit(updated.id)
+        refreshNoteSuggestions(updated, updated.title, updated.content)
+    }
+
+    fun refreshNoteSuggestions(note: Note, draftTitle: String, draftContent: String) = viewModelScope.launch {
+        val workingNote = note.copy(title = draftTitle, content = draftContent)
+        val attachments = repo.noteDao.getAttachmentsForNote(note.id).first()
+        val activeNotes = allActiveNotes.value
+            .map { existing -> if (existing.id == note.id) workingNote else existing }
+
+        val labels = noteIntelligenceService.suggestionLabelsFor(
+            note = workingNote,
+            allActiveNotes = activeNotes,
+            attachments = attachments
+        )
+        _noteSuggestionLabels.value = labels
     }
 
     fun createFolder(name: String = "New Folder") = viewModelScope.launch {
@@ -229,6 +254,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
             repo.noteDao.softDeleteNotesInFolders(subtreeIds.toList(), now)
             if (_currentNote.value?.folderId != null && subtreeIds.contains(_currentNote.value?.folderId)) {
                 _currentNote.value = null
+                _noteSuggestionLabels.value = emptyList()
                 prefs.edit().remove("last_note_id").apply()
             }
         }
@@ -329,6 +355,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         pushUndoAction(UndoAction.NoteDeletion(snapshot))
         if (_currentNote.value?.id == note.id) {
             _currentNote.value = null
+            _noteSuggestionLabels.value = emptyList()
             prefs.edit().remove("last_note_id").apply()
         }
         refreshRecentlyDeletedNotes()
@@ -405,6 +432,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         removeUndoReferencesForNote(note.id)
         if (_currentNote.value?.id == note.id) {
             _currentNote.value = null
+            _noteSuggestionLabels.value = emptyList()
             prefs.edit().remove("last_note_id").apply()
         }
         refreshRecentlyDeletedNotes()

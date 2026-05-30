@@ -26,7 +26,9 @@ class NoteEditorScreenTest {
             overflowButtons[0].performClick()
             composeRule.onNodeWithText("New note").performClick()
         } else {
-            composeRule.onNodeWithText("+").performClick()
+            val newNoteButtons = composeRule.onAllNodesWithContentDescription("New note")
+            assertTrue(newNoteButtons.fetchSemanticsNodes().isNotEmpty())
+            newNoteButtons[0].performClick()
         }
 
         composeRule.waitUntil(timeoutMillis = 5_000) {

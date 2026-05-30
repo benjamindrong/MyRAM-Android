@@ -1,5 +1,8 @@
 package com.apexcoretechs.myram
 
+import com.apexcoretechs.myram.intelligence.NoteIntelligenceCanonicalInput
+import com.apexcoretechs.myram.intelligence.NoteIntelligenceRuleEvaluator
+import com.apexcoretechs.myram.intelligence.NoteIntelligenceRuleSpecParser
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -94,6 +97,82 @@ class NoteIntelligenceSpecTest {
         }
     }
 
+    @Test
+    fun ruleSpecV1_usesSupportedConditionKeysAndNames() {
+        val specJson = readJson("docs/note-intelligence/note_intelligence_rules.v1.json")
+        val spec = NoteIntelligenceRuleSpecParser.parse(specJson.toString())
+        val supportedConditions = setOf(
+            "contains_action_verb",
+            "has_datetime_entity",
+            "contains_event_phrase",
+            "contains_followup_phrase",
+            "has_datetime_or_contact_entity",
+            "contains_idea_phrase",
+            "not_contains_action_verb",
+            "contains_reflective_phrase",
+            "first_person_ratio_high",
+            "open_count_above_threshold",
+            "edited_recently_multiple_times",
+            "text_similarity_above_threshold",
+            "shares_topic_keywords"
+        )
+
+        spec.rules.forEach { rule ->
+            rule.conditions.forEach { (key, conditionNames) ->
+                assertTrue(
+                    "Unsupported condition key in ${rule.id}: $key",
+                    key == "all" || key == "any"
+                )
+                conditionNames.forEach { name ->
+                    assertTrue(
+                        "Unsupported condition name in ${rule.id}: $name",
+                        supportedConditions.contains(name)
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun runtimeEvaluator_matchesFixtureExpectedLabels_withParityReport() {
+        val spec = NoteIntelligenceRuleSpecParser.parse(
+            readJson("docs/note-intelligence/note_intelligence_rules.v1.json").toString()
+        )
+        val evaluator = NoteIntelligenceRuleEvaluator(spec)
+        val mismatches = mutableListOf<String>()
+
+        fixtureFiles().forEach { file ->
+            val fixture = readJson(file.relativeTo(repoRoot()).invariantSeparatorsPath)
+            val fixtureId = fixture.getString("fixture_id")
+            val expected = fixture.getJSONArray("expected_labels").toStringList().toSet()
+            val actual = evaluator.evaluateLabels(canonicalInputFromFixture(fixture)).toSet()
+            if (expected != actual) {
+                mismatches += "- $fixtureId: expected=$expected actual=$actual"
+            }
+        }
+
+        assertTrue(
+            buildString {
+                appendLine("Android runtime parity report (v1):")
+                if (mismatches.isEmpty()) {
+                    appendLine("- No mismatches detected.")
+                } else {
+                    mismatches.forEach(::appendLine)
+                }
+            },
+            mismatches.isEmpty()
+        )
+    }
+
+    @Test
+    fun bundledRulesAsset_matchesDocsRuleArtifact() {
+        val docsFile = File(repoRoot(), "docs/note-intelligence/note_intelligence_rules.v1.json")
+        val assetFile = File(repoRoot(), "app/src/main/assets/note-intelligence/note_intelligence_rules.v1.json")
+        assertTrue("Missing docs rules artifact.", docsFile.exists())
+        assertTrue("Missing bundled rules asset.", assetFile.exists())
+        assertEquals(docsFile.readText(Charsets.UTF_8), assetFile.readText(Charsets.UTF_8))
+    }
+
     private fun fixtureFiles(): List<File> {
         val dir = File(repoRoot(), "docs/note-intelligence/fixtures/v1")
         return dir.listFiles { f -> f.isFile && f.extension.equals("json", ignoreCase = true) }
@@ -104,6 +183,35 @@ class NoteIntelligenceSpecTest {
     private fun readJson(relativePath: String): JSONObject {
         val file = File(repoRoot(), relativePath)
         return JSONObject(file.readText(Charsets.UTF_8))
+    }
+
+    private fun canonicalInputFromFixture(fixture: JSONObject): NoteIntelligenceCanonicalInput {
+        val input = fixture.getJSONObject("input")
+        val features = input.getJSONObject("features")
+        val entities = input.getJSONObject("entities")
+
+        return NoteIntelligenceCanonicalInput(
+            noteId = input.getString("note_id"),
+            text = input.getString("text"),
+            language = input.getString("language"),
+            createdAt = input.getString("created_at"),
+            modifiedAt = input.getString("modified_at"),
+            features = NoteIntelligenceCanonicalInput.Features(
+                lemmas = features.getJSONArray("lemmas").toStringList(),
+                tokens = features.getJSONArray("tokens").toStringList(),
+                openCount30d = features.getInt("open_count_30d"),
+                editCount7d = features.getInt("edit_count_7d"),
+                firstPersonRatio = features.getDouble("first_person_ratio")
+            ),
+            entities = NoteIntelligenceCanonicalInput.Entities(
+                datetimes = entities.getJSONArray("datetimes").toStringList(),
+                emails = entities.getJSONArray("emails").toStringList(),
+                phones = entities.getJSONArray("phones").toStringList(),
+                urls = entities.getJSONArray("urls").toStringList(),
+                addresses = entities.getJSONArray("addresses").toStringList()
+            ),
+            similarNoteIds = input.getJSONArray("similar_note_ids").toStringList()
+        )
     }
 
     private fun repoRoot(): File {

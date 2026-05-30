@@ -1,0 +1,47 @@
+name: Note Intelligence Validation
+
+on:
+  pull_request:
+    paths:
+      - "docs/note-intelligence/**"
+      - "app/src/main/assets/note-intelligence/**"
+      - "app/src/main/java/com/apexcoretechs/myram/intelligence/**"
+      - "app/src/test/java/com/apexcoretechs/myram/NoteIntelligenceSpecTest.kt"
+      - ".github/workflows/note-intelligence-validation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/note-intelligence/**"
+      - "app/src/main/assets/note-intelligence/**"
+      - "app/src/main/java/com/apexcoretechs/myram/intelligence/**"
+      - "app/src/test/java/com/apexcoretechs/myram/NoteIntelligenceSpecTest.kt"
+      - ".github/workflows/note-intelligence-validation.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify rules asset sync
+        run: |
+          cmp \
+            docs/note-intelligence/note_intelligence_rules.v1.json \
+            app/src/main/assets/note-intelligence/note_intelligence_rules.v1.json
+
+      - name: Run note-intelligence validation tests
+        run: |
+          ./gradlew :app:testDebugUnitTest \
+            --tests "com.apexcoretechs.myram.NoteIntelligenceSpecTest"

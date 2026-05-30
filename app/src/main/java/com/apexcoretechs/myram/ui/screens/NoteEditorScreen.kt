@@ -292,6 +292,7 @@ fun NoteEditorScreen(
 
     val attachments by vm.noteAttachments(note?.id).collectAsState(initial = emptyList())
     val canUndoActions by vm.canUndoActions.collectAsState()
+    val suggestionLabels by vm.noteSuggestionLabels.collectAsState()
     val expandedAttachment = remember(attachments, expandedAttachmentId) {
         attachments.firstOrNull { it.id == expandedAttachmentId }
     }
@@ -423,6 +424,24 @@ fun NoteEditorScreen(
             areAttachmentsExpanded = true
         }
         previousAttachmentCount = attachments.size
+        val current = note
+        if (current != null) {
+            vm.refreshNoteSuggestions(
+                note = current,
+                draftTitle = title.text,
+                draftContent = content.text
+            )
+        }
+    }
+
+    LaunchedEffect(note?.id, title.text, content.text) {
+        val current = note ?: return@LaunchedEffect
+        delay(400)
+        vm.refreshNoteSuggestions(
+            note = current,
+            draftTitle = title.text,
+            draftContent = content.text
+        )
     }
 
     Scaffold(
@@ -614,12 +633,39 @@ fun NoteEditorScreen(
                                 items(attachments, key = { it.id }) { attachment ->
                                     AttachmentThumbnail(
                                         attachment = attachment,
-                                        onOpen = {
-                                            expandedAttachmentId = attachment.id
-                                        },
-                                        onRemove = {
-                                            vm.removePhotoAttachment(attachment)
-                                        }
+                                        onOpen = { expandedAttachmentId = attachment.id },
+                                        onRemove = { vm.removePhotoAttachment(attachment) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (suggestionLabels.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Optional recommendations",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(suggestionLabels) { label ->
+                                Surface(
+                                    shape = RoundedCornerShape(100),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                                ) {
+                                    Text(
+                                        text = suggestionLabelDisplayName(label),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                 }
                             }
@@ -635,6 +681,19 @@ fun NoteEditorScreen(
             attachment = expandedAttachment,
             onDismiss = { expandedAttachmentId = null }
         )
+    }
+}
+
+private fun suggestionLabelDisplayName(label: String): String {
+    return when (label) {
+        "possible_task" -> "Possible Task"
+        "possible_event" -> "Possible Event"
+        "reminder_candidate" -> "Reminder Candidate"
+        "idea" -> "Idea"
+        "journal_entry" -> "Journal Entry"
+        "high_revisit_value" -> "High Revisit Value"
+        "merge_candidate" -> "Merge Candidate"
+        else -> label
     }
 }
 
