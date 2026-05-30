@@ -4,10 +4,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -19,8 +22,7 @@ class NoteEditorScreenTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
-    @Test
-    fun keyboardControlBar_isVisible_withoutAttachments() {
+    private fun openNewNote() {
         val overflowButtons = composeRule.onAllNodesWithContentDescription("More actions")
         if (overflowButtons.fetchSemanticsNodes().isNotEmpty()) {
             overflowButtons[0].performClick()
@@ -30,6 +32,11 @@ class NoteEditorScreenTest {
             assertTrue(newNoteButtons.fetchSemanticsNodes().isNotEmpty())
             newNoteButtons[0].performClick()
         }
+    }
+
+    @Test
+    fun keyboardControlBar_isVisible_withoutAttachments() {
+        openNewNote()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithTag("keyboard-control-bar")
@@ -41,5 +48,30 @@ class NoteEditorScreenTest {
             composeRule.onAllNodesWithContentDescription("Hide keyboard")
                 .fetchSemanticsNodes().isNotEmpty()
         )
+        composeRule.onNodeWithTag("edit-note-title").assertIsDisplayed()
+        composeRule.onNodeWithTag("redo-button").assertIsDisplayed()
+    }
+
+    @Test
+    fun longPressNote_showsPreviewAndActions() {
+        openNewNote()
+        composeRule.onNodeWithContentDescription("Back").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Untitled")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onAllNodesWithText("Untitled")[0].performTouchInput {
+            longClick()
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("note-preview-dialog")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("note-preview-dialog").assertIsDisplayed()
+        composeRule.onNodeWithText("Move to folder").assertIsDisplayed()
+        composeRule.onNodeWithText("Export").assertIsDisplayed()
     }
 }

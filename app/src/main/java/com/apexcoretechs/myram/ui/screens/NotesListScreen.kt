@@ -7,12 +7,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CreateNewFolder
@@ -43,9 +47,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.apexcoretechs.myram.data.Folder
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.ui.NotesViewModel
@@ -81,18 +88,16 @@ fun NotesListScreen(
     var renameFolderName by remember { mutableStateOf("") }
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
     var noteToMove by remember { mutableStateOf<Note?>(null) }
-    var noteToRename by remember { mutableStateOf<Note?>(null) }
-    var renameNoteName by remember { mutableStateOf("") }
+    var previewedNote by remember { mutableStateOf<Note?>(null) }
     var showingRenameMainListDialog by remember { mutableStateOf(false) }
     var renameMainListTitle by remember { mutableStateOf(mainListTitle) }
     var activeFolderMenuId by remember { mutableStateOf<Int?>(null) }
-    var activeNoteMenuId by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(showingRecentlyDeleted, currentFolderId) {
         selectionMode = false
         selectedNoteIds = emptySet()
         activeFolderMenuId = null
-        activeNoteMenuId = null
+        previewedNote = null
         if (showingRecentlyDeleted) {
             vm.refreshRecentlyDeletedNotes()
         }
@@ -170,45 +175,6 @@ fun NotesListScreen(
                     onClick = {
                         folderToRename = null
                         renameFolderName = ""
-                    }
-                ) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    noteToRename?.let { note ->
-        AlertDialog(
-            onDismissRequest = {
-                noteToRename = null
-                renameNoteName = ""
-            },
-            title = { Text("Rename Note") },
-            text = {
-                OutlinedTextField(
-                    value = renameNoteName,
-                    onValueChange = { renameNoteName = it },
-                    label = { Text("Note title") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        vm.renameNote(note, renameNoteName)
-                        noteToRename = null
-                        renameNoteName = ""
-                    }
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        noteToRename = null
-                        renameNoteName = ""
                     }
                 ) {
                     Text("Cancel")
@@ -547,7 +513,6 @@ fun NotesListScreen(
                             showingRecentlyDeleted = showingRecentlyDeleted,
                             selectionMode = selectionMode,
                             selected = selectedNoteIds.contains(note.id),
-                            menuExpanded = activeNoteMenuId == note.id,
                             onNoteSelected = onNoteSelected,
                             onSelectionToggled = { toggled ->
                                 selectedNoteIds = if (selectedNoteIds.contains(toggled.id)) {
@@ -556,31 +521,7 @@ fun NotesListScreen(
                                     selectedNoteIds + toggled.id
                                 }
                             },
-                            onOpenMenu = { activeNoteMenuId = note.id },
-                            onDismissMenu = {
-                                if (activeNoteMenuId == note.id) activeNoteMenuId = null
-                            },
-                            onTogglePinned = {
-                                activeNoteMenuId = null
-                                vm.setNotePinned(note, !note.isPinned)
-                            },
-                            onRename = {
-                                activeNoteMenuId = null
-                                noteToRename = note
-                                renameNoteName = note.title
-                            },
-                            onMove = {
-                                activeNoteMenuId = null
-                                noteToMove = note
-                            },
-                            onExport = {
-                                activeNoteMenuId = null
-                                onExportSelectedNotes(listOf(note))
-                            },
-                            onSoftDelete = {
-                                activeNoteMenuId = null
-                                vm.deleteNote(note)
-                            },
+                            onPreviewRequested = { previewedNote = it },
                             onRestore = vm::restoreNote,
                             onPermanentDelete = vm::permanentlyDeleteNote
                         )
@@ -588,6 +529,29 @@ fun NotesListScreen(
                 }
             }
         }
+    }
+
+    previewedNote?.let { note ->
+        NotePreviewDialog(
+            note = note,
+            onDismiss = { previewedNote = null },
+            onTogglePinned = {
+                vm.setNotePinned(note, !note.isPinned)
+                previewedNote = null
+            },
+            onMove = {
+                noteToMove = note
+                previewedNote = null
+            },
+            onExport = {
+                onExportSelectedNotes(listOf(note))
+                previewedNote = null
+            },
+            onDelete = {
+                vm.deleteNote(note)
+                previewedNote = null
+            }
+        )
     }
 }
 
@@ -663,16 +627,9 @@ private fun NoteListRow(
     showingRecentlyDeleted: Boolean,
     selectionMode: Boolean,
     selected: Boolean,
-    menuExpanded: Boolean,
     onNoteSelected: (Note?) -> Unit,
     onSelectionToggled: (Note) -> Unit,
-    onOpenMenu: () -> Unit,
-    onDismissMenu: () -> Unit,
-    onTogglePinned: () -> Unit,
-    onRename: () -> Unit,
-    onMove: () -> Unit,
-    onExport: () -> Unit,
-    onSoftDelete: () -> Unit,
+    onPreviewRequested: (Note) -> Unit,
     onRestore: (Note) -> Unit,
     onPermanentDelete: (Note) -> Unit
 ) {
@@ -698,7 +655,7 @@ private fun NoteListRow(
                     },
                     onLongClick = {
                         if (!selectionMode && !showingRecentlyDeleted) {
-                            onOpenMenu()
+                            onPreviewRequested(note)
                         }
                     }
                 ),
@@ -755,23 +712,70 @@ private fun NoteListRow(
                 }
             }
         }
+    }
+}
 
-        if (!showingRecentlyDeleted) {
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = onDismissMenu
+@Composable
+private fun NotePreviewDialog(
+    note: Note,
+    onDismiss: () -> Unit,
+    onTogglePinned: () -> Unit,
+    onMove: () -> Unit,
+    onExport: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .aspectRatio(1f)
+                .testTag("note-preview-dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                DropdownMenuItem(
-                    text = { Text(if (note.isPinned) "Unpin" else "Pin") },
-                    onClick = onTogglePinned
+                Text(
+                    text = note.title.ifBlank { "Untitled" },
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
                 )
-                DropdownMenuItem(text = { Text("Rename") }, onClick = onRename)
-                DropdownMenuItem(text = { Text("Move to folder") }, onClick = onMove)
-                DropdownMenuItem(text = { Text("Export") }, onClick = onExport)
-                DropdownMenuItem(
-                    text = { Text("Delete", fontWeight = FontWeight.SemiBold) },
-                    onClick = onSoftDelete
-                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = note.content.ifBlank { "No content yet" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onTogglePinned) {
+                        Text(if (note.isPinned) "Unpin" else "Pin")
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    TextButton(onClick = onMove) {
+                        Text("Move to folder")
+                    }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onExport) {
+                        Text("Export")
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDelete) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                }
             }
         }
     }
