@@ -29,3 +29,25 @@ The spec is the source of truth for cross-platform suggestion behavior so iOS an
 - Optional and user-controlled.
 - On-device processing.
 - Rule conditions should stay deterministic and auditable.
+
+## Android Runtime Notes
+
+- Suggestion generation runs on-device in the app process.
+- Runtime extraction uses ML Kit language identification and ML Kit OCR for attachment-derived text signals.
+- Rule evaluation is deterministic and local against `note_intelligence_rules.v1.json`.
+- Suggestion generation does not require any network call in the runtime path; if ML Kit extraction is unavailable, extraction falls back to local heuristics.
+
+## Rule/Spec Version Bump Process
+
+1. Copy artifacts and increment version suffixes:
+- `note_intelligence_rules.v{N+1}.json`
+- `contracts/note_intelligence_input.schema.v{N+1}.json`
+- `contracts/note_intelligence_output.schema.v{N+1}.json`
+
+2. Update `spec_version`, labels/rules, and condition semantics in the new rule artifact.
+
+3. Add fixture corpus for the new version under `fixtures/v{N+1}/` with expected labels.
+
+4. Keep prior versions immutable for release auditability and backward compatibility.
+
+5. Run cross-platform fixture parity validation before release.

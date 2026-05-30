@@ -70,6 +70,9 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.coroutines.android)
+    implementation(libs.coroutines.play.services)
+    implementation(libs.mlkit.language.id)
+    implementation(libs.mlkit.text.recognition)
     testImplementation(libs.junit)
     testImplementation(libs.json)
 }
