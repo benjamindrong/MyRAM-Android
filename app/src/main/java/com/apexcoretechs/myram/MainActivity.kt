@@ -11,14 +11,29 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.ui.NotesViewModel
 import com.apexcoretechs.myram.ui.ShareableExport
 import com.apexcoretechs.myram.ui.screens.*
 import com.apexcoretechs.myram.ui.theme.AppearanceSetting
+import com.apexcoretechs.myram.ui.theme.EditorChromeStyle
 import com.apexcoretechs.myram.ui.theme.MyRAMTheme
 import java.io.File
 import java.io.FileOutputStream
@@ -29,6 +44,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val startupSharedUris = extractSharedImageUris(intent)
@@ -44,6 +60,13 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(
                     AppearanceSetting.fromPreferenceValue(
                         prefs.getString("appearance_setting", AppearanceSetting.System.preferenceValue)
+                    )
+                )
+            }
+            var editorChromeStyle by remember {
+                mutableStateOf(
+                    EditorChromeStyle.fromPreferenceValue(
+                        prefs.getString("editor_chrome_style", EditorChromeStyle.Standard.preferenceValue)
                     )
                 )
             }
@@ -73,6 +96,11 @@ class MainActivity : ComponentActivity() {
             fun updateAppearanceSetting(setting: AppearanceSetting) {
                 appearanceSetting = setting
                 prefs.edit().putString("appearance_setting", setting.preferenceValue).apply()
+            }
+
+            fun updateEditorChromeStyle(style: EditorChromeStyle) {
+                editorChromeStyle = style
+                prefs.edit().putString("editor_chrome_style", style.preferenceValue).apply()
             }
 
             MyRAMTheme(appearanceSetting = appearanceSetting) {
@@ -111,6 +139,7 @@ class MainActivity : ComponentActivity() {
                 var currentScreen by remember { mutableStateOf("list") }
                 var selectedNote by remember { mutableStateOf<Note?>(null) }
                 val currentNote by vm.currentNote.collectAsState()
+                val editorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
                 // Auto open last note if available
                 LaunchedEffect(currentNote) {
@@ -132,36 +161,57 @@ class MainActivity : ComponentActivity() {
                 }
 
                 when (currentScreen) {
-                    "list" -> NotesListScreen(
-                        vm = vm,
-                        appearanceSetting = appearanceSetting,
-                        onAppearanceSettingChanged = ::updateAppearanceSetting,
-                        onExportSelectedNotes = { selectedNotes ->
-                            vm.exportNotesForSharing(
-                                notesToExport = selectedNotes,
-                                onSuccess = { pendingExport = it },
-                                onError = ::showExportError
-                            )
+                    "list", "editor" -> {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            NotesListScreen(
+                                vm = vm,
+                                appearanceSetting = appearanceSetting,
+                                onAppearanceSettingChanged = ::updateAppearanceSetting,
+                                editorChromeStyle = editorChromeStyle,
+                                onEditorChromeStyleChanged = ::updateEditorChromeStyle,
+                                onExportSelectedNotes = { selectedNotes ->
+                                    vm.exportNotesForSharing(
+                                        notesToExport = selectedNotes,
+                                        onSuccess = { pendingExport = it },
+                                        onError = ::showExportError
+                                    )
+                                }
+                            ) { note ->
+                                selectedNote = note
+                                currentScreen = "editor"
+                                vm.selectNote(note)
+                            }
+
+                            if (selectedNote != null) {
+                                ModalBottomSheet(
+                                    onDismissRequest = {
+                                        selectedNote = null
+                                        currentScreen = "list"
+                                        vm.selectNote(null)
+                                    },
+                                    sheetState = editorSheetState,
+                                    dragHandle = null
+                                ) {
+                                    NoteEditorScreen(
+                                        vm = vm,
+                                        note = selectedNote,
+                                        editorChromeStyle = editorChromeStyle,
+                                        onNoteChanged = { selectedNote = it },
+                                        onShareNote = { noteToShare ->
+                                            vm.exportNotesForSharing(
+                                                notesToExport = listOf(noteToShare),
+                                                onSuccess = { pendingExport = it },
+                                                onError = ::showExportError
+                                            )
+                                        }
+                                    ) {
+                                        selectedNote = null
+                                        currentScreen = "list"
+                                        vm.selectNote(null)
+                                    }
+                                }
+                            }
                         }
-                    ) { note ->
-                        selectedNote = note
-                        currentScreen = "editor"
-                        vm.selectNote(note)
-                    }
-                    "editor" -> NoteEditorScreen(
-                        vm = vm,
-                        note = selectedNote,
-                        onNoteChanged = { selectedNote = it },
-                        onShareNote = { noteToShare ->
-                            vm.exportNotesForSharing(
-                                notesToExport = listOf(noteToShare),
-                                onSuccess = { pendingExport = it },
-                                onError = ::showExportError
-                            )
-                        }
-                    ) {
-                        currentScreen = "list"
-                        vm.selectNote(null) // optional: clear current on back
                     }
                 }
             }

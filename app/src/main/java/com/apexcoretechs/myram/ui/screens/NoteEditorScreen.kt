@@ -1,7 +1,6 @@
 package com.apexcoretechs.myram.ui.screens
 
 import android.graphics.BitmapFactory
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -9,24 +8,28 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -34,9 +37,16 @@ import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FormatBold
+import androidx.compose.material.icons.filled.FormatItalic
+import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.KeyboardHide
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.StrikethroughS
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -50,7 +60,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -63,33 +72,44 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewModelScope
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
+import com.apexcoretechs.myram.ui.components.ChromeActionBar
+import com.apexcoretechs.myram.ui.components.computeTopBarLayout
 import com.apexcoretechs.myram.ui.NotesViewModel
+import com.apexcoretechs.myram.ui.richtext.RichTextEditor
+import com.apexcoretechs.myram.ui.richtext.RichTextEditorActions
+import com.apexcoretechs.myram.ui.richtext.RichTextFormatState
+import com.apexcoretechs.myram.ui.richtext.plainTextFromStoredContent
+import com.apexcoretechs.myram.ui.theme.EditorChromeStyle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class EditorField {
-    TITLE,
-    CONTENT
-}
+private val editorColorSwatches = listOf(
+    Color(0xFF1F2933),
+    Color(0xFFB91C1C),
+    Color(0xFFB45309),
+    Color(0xFF047857),
+    Color(0xFF1D4ED8),
+    Color(0xFF6D28D9)
+)
 
 @Composable
 private fun AttachmentThumbnail(
@@ -224,45 +244,163 @@ private fun AttachmentViewerDialog(
 }
 
 @Composable
-private fun AttachmentInlineActions(
-    modifier: Modifier = Modifier,
-    onDismissKeyboard: () -> Unit,
-    onCut: () -> Unit,
-    onCopy: () -> Unit,
-    onPaste: () -> Unit,
-    onSelectAll: () -> Unit
+private fun RichTextActionBars(
+    actions: RichTextEditorActions?,
+    formatState: RichTextFormatState,
+    showingFormattingControls: Boolean,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onToggleFormattingControls: () -> Unit,
+    onHideKeyboard: () -> Unit,
+    onSetFontSize: (Int) -> Unit,
+    chromeStyle: EditorChromeStyle,
+    modifier: Modifier = Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = modifier
-            .clip(RoundedCornerShape(100))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
-            .padding(horizontal = 6.dp, vertical = 4.dp)
+    var sizeMenuExpanded by remember { mutableStateOf(false) }
+    val background = if (chromeStyle == EditorChromeStyle.ChromeAccent) {
+        Color(0xFF5D6168).copy(alpha = 0.88f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+    }
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.End
     ) {
-        InlineIconAction(Icons.Filled.KeyboardHide, "Hide keyboard", onDismissKeyboard)
-        InlineIconAction(Icons.Filled.ContentCut, "Cut", onCut)
-        InlineIconAction(Icons.Filled.ContentCopy, "Copy", onCopy)
-        InlineIconAction(Icons.Filled.ContentPaste, "Paste", onPaste)
-        InlineIconAction(Icons.Filled.SelectAll, "Select all", onSelectAll)
+        if (showingFormattingControls) {
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ToggleFormatIcon(
+                        icon = Icons.Filled.FormatBold,
+                        label = "Bold",
+                        selected = formatState.bold,
+                        onClick = { actions?.toggleBold() }
+                    )
+                    ToggleFormatIcon(
+                        icon = Icons.Filled.FormatItalic,
+                        label = "Italic",
+                        selected = formatState.italic,
+                        onClick = { actions?.toggleItalic() }
+                    )
+                    ToggleFormatIcon(
+                        icon = Icons.Filled.FormatUnderlined,
+                        label = "Underline",
+                        selected = formatState.underline,
+                        onClick = { actions?.toggleUnderline() }
+                    )
+                    ToggleFormatIcon(
+                        icon = Icons.Filled.StrikethroughS,
+                        label = "Strikethrough",
+                        selected = formatState.strikethrough,
+                        onClick = { actions?.toggleStrikethrough() }
+                    )
+                    Box {
+                        ToggleFormatIcon(
+                            icon = Icons.Filled.TextFields,
+                            label = "Font size",
+                            selected = false,
+                            onClick = { sizeMenuExpanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = sizeMenuExpanded,
+                            onDismissRequest = { sizeMenuExpanded = false }
+                        ) {
+                            listOf(14, 16, 18, 20, 24).forEach { size ->
+                                DropdownMenuItem(
+                                    text = { Text(if (formatState.fontSizeSp == size) "✓ ${size}sp" else "${size}sp") },
+                                    onClick = {
+                                        sizeMenuExpanded = false
+                                        onSetFontSize(size)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    editorColorSwatches.forEach { swatch ->
+                        val selected = formatState.textColor == swatch.toArgb()
+                        Surface(
+                            modifier = Modifier
+                                .size(if (selected) 20.dp else 18.dp)
+                                .clickable { actions?.applyColor(swatch) },
+                            shape = CircleShape,
+                            color = swatch,
+                            tonalElevation = if (selected) 4.dp else 0.dp
+                        ) {}
+                    }
+                }
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(100))
+                .background(background)
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .testTag("keyboard-control-bar")
+        ) {
+            ToggleFormatIcon(
+                icon = Icons.Filled.KeyboardHide,
+                label = "Hide keyboard",
+                selected = false,
+                onClick = onHideKeyboard
+            )
+            ToggleFormatIcon(
+                icon = Icons.AutoMirrored.Filled.Undo,
+                label = "Undo",
+                selected = false,
+                enabled = canUndo,
+                onClick = onUndo
+            )
+            ToggleFormatIcon(
+                icon = Icons.AutoMirrored.Filled.Redo,
+                label = "Redo",
+                selected = false,
+                enabled = canRedo,
+                onClick = onRedo
+            )
+            ToggleFormatIcon(icon = Icons.Filled.ContentCut, label = "Cut", selected = false, onClick = { actions?.cutSelection() })
+            ToggleFormatIcon(icon = Icons.Filled.ContentCopy, label = "Copy", selected = false, onClick = { actions?.copySelection() })
+            ToggleFormatIcon(icon = Icons.Filled.ContentPaste, label = "Paste", selected = false, onClick = { actions?.pasteClipboard() })
+            ToggleFormatIcon(icon = Icons.Filled.SelectAll, label = "Select all", selected = false, onClick = { actions?.toggleSelectAll() })
+            ToggleFormatIcon(
+                icon = if (showingFormattingControls) Icons.Filled.Close else Icons.Filled.MoreVert,
+                label = "Formatting menu",
+                selected = showingFormattingControls,
+                onClick = onToggleFormattingControls
+            )
+        }
     }
 }
 
 @Composable
-private fun InlineIconAction(
+private fun ToggleFormatIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
+    label: String,
+    selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier.size(30.dp)
-    ) {
+    val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    IconButton(onClick = onClick, modifier = Modifier.size(30.dp), enabled = enabled) {
         Icon(
             imageVector = icon,
-            contentDescription = contentDescription,
+            contentDescription = label,
             modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
+            tint = if (enabled) tint else tint.copy(alpha = 0.45f)
         )
     }
 }
@@ -272,12 +410,14 @@ private fun InlineIconAction(
 fun NoteEditorScreen(
     vm: NotesViewModel,
     note: Note?,
+    editorChromeStyle: EditorChromeStyle,
     onNoteChanged: (Note) -> Unit,
     onShareNote: (Note) -> Unit,
     onBack: () -> Unit
 ) {
     var title by remember(note?.id) { mutableStateOf(TextFieldValue(note?.title ?: "")) }
-    var content by remember(note?.id) { mutableStateOf(TextFieldValue(note?.content ?: "")) }
+    var storedContent by remember(note?.id) { mutableStateOf(note?.content ?: "") }
+    var plainContent by remember(note?.id) { mutableStateOf(plainTextFromStoredContent(note?.content ?: "")) }
     var undoHistory by remember(note?.id) { mutableStateOf<List<EditorSnapshot>>(emptyList()) }
     var redoHistory by remember(note?.id) { mutableStateOf<List<EditorSnapshot>>(emptyList()) }
     var pendingUndoSnapshot by remember(note?.id) { mutableStateOf<EditorSnapshot?>(null) }
@@ -286,16 +426,29 @@ fun NoteEditorScreen(
     var hasEditedCurrentNote by remember(note?.id) { mutableStateOf(false) }
     var isRestoringUndo by remember(note?.id) { mutableStateOf(false) }
     var isAttachmentMenuExpanded by remember { mutableStateOf(false) }
+    var showingCreateFolderPrompt by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
     var areAttachmentsExpanded by remember(note?.id) { mutableStateOf(false) }
     var expandedAttachmentId by remember(note?.id) { mutableStateOf<Long?>(null) }
-    var focusedField by remember(note?.id) { mutableStateOf<EditorField?>(null) }
     var previousAttachmentCount by remember(note?.id) { mutableIntStateOf(0) }
     var showingTitleEditor by remember(note?.id) { mutableStateOf(false) }
     var titleDraft by remember(note?.id) { mutableStateOf(title.text) }
+    var showingFormattingControls by remember(note?.id) { mutableStateOf(false) }
+    var editorActions by remember(note?.id) { mutableStateOf<RichTextEditorActions?>(null) }
+    var formatState by remember(note?.id) {
+                mutableStateOf(
+                    RichTextFormatState(
+                        bold = false,
+                        italic = false,
+                        underline = false,
+                        strikethrough = false,
+                        textColor = Color.Black.toArgb(),
+                        fontSizeSp = 16
+                    )
+                )
+    }
 
     val scope = rememberCoroutineScope()
-    val clipboardManager = LocalClipboardManager.current
-    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -324,7 +477,11 @@ fun NoteEditorScreen(
         }
     }
 
-    fun currentSnapshot() = EditorSnapshot(title = title, content = content)
+    fun currentSnapshot() = EditorSnapshot(
+        title = title,
+        storedContent = storedContent,
+        plainContent = plainContent
+    )
 
     fun pushUndoSnapshot(snapshot: EditorSnapshot) {
         if (snapshot == currentSnapshot()) return
@@ -339,7 +496,7 @@ fun NoteEditorScreen(
                 vm.recordTextUndoSnapshot(
                     note = current,
                     previousTitle = snapshot.title.text,
-                    previousContent = snapshot.content.text
+                    previousContent = snapshot.storedContent
                 )
             }
         }
@@ -370,7 +527,8 @@ fun NoteEditorScreen(
             isRestoringUndo = true
             hasEditedCurrentNote = true
             title = snapshot.title
-            content = snapshot.content
+            storedContent = snapshot.storedContent
+            plainContent = snapshot.plainContent
             isRestoringUndo = false
         } else {
             vm.undoLastAction()
@@ -386,69 +544,16 @@ fun NoteEditorScreen(
         isRestoringUndo = true
         hasEditedCurrentNote = true
         title = snapshot.title
-        content = snapshot.content
+        storedContent = snapshot.storedContent
+        plainContent = snapshot.plainContent
         isRestoringUndo = false
     }
 
-    fun applyToFocusedField(
-        markEdited: Boolean,
-        transform: (TextFieldValue) -> TextFieldValue
-    ) {
-        val snapshot = if (markEdited) currentSnapshot() else null
-        when (focusedField) {
-            EditorField.TITLE -> {
-                val updated = transform(title)
-                if (updated != title) {
-                    if (markEdited && snapshot != null) {
-                        scheduleUndoSnapshot(snapshot)
-                    }
-                    title = updated
-                }
-            }
-            EditorField.CONTENT, null -> {
-                val updated = transform(content)
-                if (updated != content) {
-                    if (markEdited && snapshot != null) {
-                        scheduleUndoSnapshot(snapshot)
-                    }
-                    content = updated
-                }
-            }
-        }
-        if (markEdited) {
-            hasEditedCurrentNote = true
-        }
-    }
-
-    fun copyFromFocused() {
-        val source = when (focusedField) {
-            EditorField.TITLE -> title
-            EditorField.CONTENT, null -> content
-        }
-        val copied = copySelectedText(source) ?: return
-        clipboardManager.setText(AnnotatedString(copied))
-        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
-    }
-
-    fun cutFromFocused() {
-        val source = when (focusedField) {
-            EditorField.TITLE -> title
-            EditorField.CONTENT, null -> content
-        }
-        val (updated, cutText) = cutSelectedText(source)
-        if (cutText.isNullOrEmpty()) return
-        applyToFocusedField(markEdited = true) { updated }
-        clipboardManager.setText(AnnotatedString(cutText))
-    }
-
-    fun pasteIntoFocused() {
-        val pastedText = clipboardManager.getText()?.text?.toString().orEmpty()
-        if (pastedText.isEmpty()) return
-        applyToFocusedField(markEdited = true) { current -> pasteIntoSelection(current, pastedText) }
-    }
-
-    fun selectAllFocused() {
-        applyToFocusedField(markEdited = false, transform = ::toggleSelectAllText)
+    fun markContentEdited(newStored: String) {
+        if (newStored == storedContent) return
+        scheduleUndoSnapshot(currentSnapshot())
+        hasEditedCurrentNote = true
+        storedContent = newStored
     }
 
     fun saveTitleEdit() {
@@ -459,8 +564,7 @@ fun NoteEditorScreen(
         title = title.copy(text = trimmed, selection = TextRange(trimmed.length))
     }
 
-    // Auto-save with debounce
-    LaunchedEffect(note?.id, title, content) {
+    LaunchedEffect(note?.id, title.text, storedContent) {
         saveJob?.cancel()
         if (!hasEditedCurrentNote) return@LaunchedEffect
         saveJob = vm.viewModelScope.launch {
@@ -468,7 +572,7 @@ fun NoteEditorScreen(
             note?.let { current ->
                 val updated = current.copy(
                     title = title.text,
-                    content = content.text
+                    content = storedContent
                 )
                 vm.updateNote(updated)
             }
@@ -485,18 +589,18 @@ fun NoteEditorScreen(
             vm.refreshNoteSuggestions(
                 note = current,
                 draftTitle = title.text,
-                draftContent = content.text
+                draftContent = plainContent
             )
         }
     }
 
-    LaunchedEffect(note?.id, title.text, content.text) {
+    LaunchedEffect(note?.id, title.text, plainContent) {
         val current = note ?: return@LaunchedEffect
         delay(400)
         vm.refreshNoteSuggestions(
             note = current,
             draftTitle = title.text,
-            draftContent = content.text
+            draftContent = plainContent
         )
     }
 
@@ -530,43 +634,161 @@ fun NoteEditorScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Note") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+    if (showingCreateFolderPrompt) {
+        AlertDialog(
+            onDismissRequest = {
+                showingCreateFolderPrompt = false
+                newFolderName = ""
+            },
+            title = { Text("New Folder") },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    label = { Text("Folder name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.createFolder(newFolderName)
+                        newFolderName = ""
+                        showingCreateFolderPrompt = false
+                    },
+                    enabled = newFolderName.trim().isNotEmpty()
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showingCreateFolderPrompt = false
+                        newFolderName = ""
                     }
-                },
-                actions = {
-                    IconButton(
-                        onClick = ::redoLastEdit,
-                        enabled = redoHistory.isNotEmpty(),
-                        modifier = Modifier.testTag("redo-button")
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
-                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
+    val canPerformUndo = undoHistory.isNotEmpty() || pendingUndoSnapshot != null || canUndoActions
+    val canPerformRedo = redoHistory.isNotEmpty()
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val editorTopActions = remember(note?.id) {
+        listOf(
+            EditorTopBarAction("new-note", Icons.Filled.Add, "New note") {
+                saveJob?.cancel()
+                vm.createNote { created -> onNoteChanged(created) }
+            },
+            EditorTopBarAction("new-folder", Icons.Filled.Folder, "New folder") {
+                newFolderName = ""
+                showingCreateFolderPrompt = true
+            },
+            EditorTopBarAction("export-note", Icons.Filled.Share, "Export note") {
+                note?.let(onShareNote)
+            }
+        )
+    }
+
+    Scaffold(topBar = {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            val totalWidthPx = with(density) { maxWidth.toPx() } - with(density) { 20.dp.toPx() }
+            val iconWidthPx = with(density) { 28.dp.toPx() }
+            val spacingPx = with(density) { 8.dp.toPx() }
+            val titleDisplay = title.text.ifBlank { "Untitled" }
+            val titleWidthPx = textMeasurer.measure(
+                text = titleDisplay,
+                style = MaterialTheme.typography.titleMedium
+            ).size.width.toFloat() + with(density) { 24.dp.toPx() }
+            val promotableActionCount = editorTopActions.size
+            val layout = computeTopBarLayout(
+                totalWidthPx = totalWidthPx,
+                leadingWidthPx = 0f,
+                titleWidthPx = titleWidthPx,
+                actionCount = promotableActionCount + 1,
+                actionWidthPx = iconWidthPx,
+                spacingPx = spacingPx,
+                overflowButtonWidthPx = iconWidthPx
+            )
+
+            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .width(44.dp)
+                        .height(4.dp),
+                    shape = RoundedCornerShape(100),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                ) {}
+
+                ChromeActionBar(style = editorChromeStyle, modifier = Modifier.fillMaxWidth()) {
                     TextButton(
-                        onClick = ::undoLastEdit,
-                        enabled = undoHistory.isNotEmpty() || pendingUndoSnapshot != null || canUndoActions
+                        onClick = {
+                            titleDraft = title.text
+                            showingTitleEditor = true
+                        },
+                        modifier = Modifier
+                            .height(30.dp)
+                            .testTag("edit-note-title"),
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
                     ) {
-                        Text("Undo")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                titleDisplay,
+                                maxLines = 1,
+                                overflow = if (layout.ellipsizeTitle) TextOverflow.Ellipsis else TextOverflow.Clip
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Filled.Edit, contentDescription = "Edit title")
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+
+                    editorTopActions.take(layout.visibleActionCount.coerceAtLeast(0)).forEach { action ->
+                        IconButton(onClick = action.onClick, modifier = Modifier.size(30.dp)) {
+                            Icon(action.icon, contentDescription = action.label)
+                        }
                     }
 
                     Box {
-                        TextButton(
+                        IconButton(
                             onClick = { isAttachmentMenuExpanded = true },
-                            enabled = note != null
+                            modifier = Modifier.size(30.dp)
                         ) {
-                            Text("Attach")
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = "More note actions",
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
-
                         DropdownMenu(
                             expanded = isAttachmentMenuExpanded,
                             onDismissRequest = { isAttachmentMenuExpanded = false }
                         ) {
+                            editorTopActions.drop(layout.visibleActionCount.coerceAtLeast(0)).forEach { action ->
+                                DropdownMenuItem(
+                                    text = { Text(action.label) },
+                                    onClick = {
+                                        isAttachmentMenuExpanded = false
+                                        action.onClick()
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Attachments") },
+                                onClick = {
+                                    isAttachmentMenuExpanded = false
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Photo Library") },
                                 onClick = {
@@ -585,125 +807,74 @@ fun NoteEditorScreen(
                                     fileImportLauncher.launch(arrayOf("image/*"))
                                 }
                             )
+                            DropdownMenuItem(
+                                text = { Text("Delete Note") },
+                                onClick = {
+                                    isAttachmentMenuExpanded = false
+                                    note?.let { current ->
+                                        vm.deleteNote(current)
+                                        onBack()
+                                    }
+                                }
+                            )
                         }
-                    }
-
-                    IconButton(
-                        onClick = {
-                            note?.let { current ->
-                                vm.deleteNote(current)
-                                onBack()
-                            }
-                        },
-                        enabled = note != null
-                    ) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Delete note")
-                    }
-
-                    IconButton(
-                        onClick = {
-                            note?.let(onShareNote)
-                        },
-                        enabled = note != null
-                    ) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share note")
-                    }
-
-                    IconButton(
-                        onClick = {
-                            saveJob?.cancel()
-                            vm.createNote { created ->
-                                onNoteChanged(created)
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = "New note")
                     }
                 }
-            )
+            }
         }
-    ) { padding ->
+    }) { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
                 .padding(16.dp)
+                .imePadding()
         ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("edit-note-title")
-                    .clickable {
-                        titleDraft = title.text
-                        showingTitleEditor = true
-                    },
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title.text.ifBlank { "Untitled" },
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = if (title.text.isBlank()) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        maxLines = 2
-                    )
-                    Icon(
-                        imageVector = Icons.Filled.Edit,
-                        contentDescription = "Edit title",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                OutlinedTextField(
-                    value = content,
-                    onValueChange = {
-                        if (it != content) {
-                            scheduleUndoSnapshot(currentSnapshot())
-                        }
-                        hasEditedCurrentNote = true
-                        content = it
+                RichTextEditor(
+                    modifier = Modifier.fillMaxSize(),
+                    storedContent = storedContent,
+                    onStoredContentChanged = { newStored ->
+                        markContentEdited(newStored)
                     },
-                    placeholder = { Text("Start typing...") },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .onFocusChanged { focusState ->
-                            if (focusState.isFocused) focusedField = EditorField.CONTENT
-                        },
-                    singleLine = false
+                    onPlainTextChanged = { plain ->
+                        plainContent = plain
+                    },
+                    onFormatStateChanged = { state ->
+                        formatState = state
+                    },
+                    actionsSink = { editorActions = it },
+                    contentTextColor = MaterialTheme.colorScheme.onSurface,
+                    placeholderText = "Start typing...",
+                    bottomContentInset = 112.dp
                 )
 
-                AttachmentInlineActions(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = 8.dp)
-                        .testTag("keyboard-control-bar"),
-                    onDismissKeyboard = {
+                RichTextActionBars(
+                    actions = editorActions,
+                    formatState = formatState,
+                    showingFormattingControls = showingFormattingControls,
+                    canUndo = canPerformUndo,
+                    canRedo = canPerformRedo,
+                    onUndo = { if (canPerformUndo) undoLastEdit() },
+                    onRedo = { if (canPerformRedo) redoLastEdit() },
+                    onToggleFormattingControls = {
+                        showingFormattingControls = !showingFormattingControls
+                    },
+                    onHideKeyboard = {
                         keyboardController?.hide()
                         focusManager.clearFocus()
                     },
-                    onCut = ::cutFromFocused,
-                    onCopy = ::copyFromFocused,
-                    onPaste = ::pasteIntoFocused,
-                    onSelectAll = ::selectAllFocused
+                    onSetFontSize = { size ->
+                        editorActions?.applyFontSize(size)
+                    },
+                    chromeStyle = editorChromeStyle,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 8.dp, bottom = 8.dp)
                 )
             }
 
@@ -813,5 +984,13 @@ private fun suggestionLabelDisplayName(label: String): String {
 
 private data class EditorSnapshot(
     val title: TextFieldValue,
-    val content: TextFieldValue
+    val storedContent: String,
+    val plainContent: String
+)
+
+private data class EditorTopBarAction(
+    val id: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val label: String,
+    val onClick: () -> Unit
 )
