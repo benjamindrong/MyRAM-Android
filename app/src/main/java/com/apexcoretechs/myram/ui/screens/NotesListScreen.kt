@@ -1,10 +1,12 @@
 package com.apexcoretechs.myram.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -12,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,10 +23,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,7 +47,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -47,16 +56,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.apexcoretechs.myram.data.Folder
 import com.apexcoretechs.myram.data.Note
+import com.apexcoretechs.myram.ui.components.ChromeActionBar
+import com.apexcoretechs.myram.ui.components.computeTopBarLayout
 import com.apexcoretechs.myram.ui.NotesViewModel
+import com.apexcoretechs.myram.ui.richtext.plainTextFromStoredContent
 import com.apexcoretechs.myram.ui.theme.AppearanceSetting
+import com.apexcoretechs.myram.ui.theme.EditorChromeStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +80,8 @@ fun NotesListScreen(
     vm: NotesViewModel,
     appearanceSetting: AppearanceSetting,
     onAppearanceSettingChanged: (AppearanceSetting) -> Unit,
+    editorChromeStyle: EditorChromeStyle,
+    onEditorChromeStyleChanged: (EditorChromeStyle) -> Unit,
     onExportSelectedNotes: (List<Note>) -> Unit,
     onNoteSelected: (Note?) -> Unit
 ) {
@@ -76,9 +94,10 @@ fun NotesListScreen(
     val recentlyDeletedNotes by vm.recentlyDeletedNotes.collectAsState()
     val mainListTitle by vm.mainListTitle.collectAsState()
     val canUndoActions by vm.canUndoActions.collectAsState()
+    val canRedoActions by vm.canRedoActions.collectAsState()
+    val haptic = LocalHapticFeedback.current
 
     var actionsMenuExpanded by remember { mutableStateOf(false) }
-    var appearanceMenuExpanded by remember { mutableStateOf(false) }
     var showingRecentlyDeleted by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(false) }
     var selectedNoteIds by remember { mutableStateOf(setOf<Int>()) }
@@ -88,7 +107,9 @@ fun NotesListScreen(
     var renameFolderName by remember { mutableStateOf("") }
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
     var noteToMove by remember { mutableStateOf<Note?>(null) }
+    var notesToMoveBatch by remember { mutableStateOf<List<Note>>(emptyList()) }
     var previewedNote by remember { mutableStateOf<Note?>(null) }
+    var showingBulkActions by remember { mutableStateOf(false) }
     var showingRenameMainListDialog by remember { mutableStateOf(false) }
     var renameMainListTitle by remember { mutableStateOf(mainListTitle) }
     var activeFolderMenuId by remember { mutableStateOf<Int?>(null) }
@@ -307,133 +328,354 @@ fun NotesListScreen(
         )
     }
 
+    if (notesToMoveBatch.isNotEmpty()) {
+        var destinationFolderId by remember(notesToMoveBatch.map { it.id }) { mutableStateOf<Int?>(null) }
+        AlertDialog(
+            onDismissRequest = { notesToMoveBatch = emptyList() },
+            title = { Text("Move Selected Notes") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Move ${notesToMoveBatch.size} notes to:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    TextButton(
+                        onClick = { destinationFolderId = null },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (destinationFolderId == null) "✓ Top level" else "Top level",
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    allFolders
+                        .sortedWith(compareBy<Folder> { folderDepth(it, allFolders) }.thenBy { it.name.lowercase() })
+                        .forEach { folder ->
+                            val indent = "  ".repeat(folderDepth(folder, allFolders).coerceAtMost(6))
+                            val selectedPrefix = if (destinationFolderId == folder.id) "✓ " else ""
+                            TextButton(
+                                onClick = { destinationFolderId = folder.id },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "$selectedPrefix$indent${folder.name}",
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        notesToMoveBatch.forEach { note -> vm.moveNote(note, destinationFolderId) }
+                        notesToMoveBatch = emptyList()
+                        showingBulkActions = false
+                    }
+                ) {
+                    Text("Move")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { notesToMoveBatch = emptyList() }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showingBulkActions) {
+        AlertDialog(
+            onDismissRequest = { showingBulkActions = false },
+            title = { Text("${selectedNoteIds.size} selected") },
+            text = { Text("Choose an action for selected notes.") },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = {
+                            notes.filter { selectedNoteIds.contains(it.id) }
+                                .forEach { note -> vm.setNotePinned(note, true) }
+                            showingBulkActions = false
+                        }
+                    ) {
+                        Text("Pin")
+                    }
+                    TextButton(
+                        onClick = {
+                            notes.filter { selectedNoteIds.contains(it.id) }
+                                .forEach { note -> vm.setNotePinned(note, false) }
+                            showingBulkActions = false
+                        }
+                    ) {
+                        Text("Unpin")
+                    }
+                    TextButton(
+                        onClick = {
+                            onExportSelectedNotes(notes.filter { selectedNoteIds.contains(it.id) })
+                            showingBulkActions = false
+                        }
+                    ) {
+                        Text("Export")
+                    }
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = {
+                            notesToMoveBatch = notes.filter { selectedNoteIds.contains(it.id) }
+                            showingBulkActions = false
+                        },
+                        enabled = selectedNoteIds.isNotEmpty()
+                    ) {
+                        Text("Move")
+                    }
+                    TextButton(
+                        onClick = {
+                            notes.filter { selectedNoteIds.contains(it.id) }
+                                .forEach(vm::deleteNote)
+                            showingBulkActions = false
+                            selectionMode = false
+                            selectedNoteIds = emptySet()
+                        }
+                    ) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = { showingBulkActions = false }) {
+                        Text("Close")
+                    }
+                }
+            }
+        )
+    }
+
     val screenTitle = when {
         showingRecentlyDeleted -> "Recently Deleted"
         currentFolder != null -> currentFolder!!.name
         else -> mainListTitle
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(screenTitle) },
-                navigationIcon = {
-                    when {
-                        showingRecentlyDeleted -> {
-                            IconButton(onClick = { showingRecentlyDeleted = false }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                        }
-                        currentFolder != null -> {
-                            IconButton(onClick = { vm.navigateToParentFolder() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
+    val topBarActionSpecs = remember(canUndoActions, canRedoActions) {
+        listOf(
+            ListTopBarActionSpec("undo", Icons.AutoMirrored.Filled.Undo, enabled = canUndoActions) {
+                vm.undoLastAction()
+            },
+            ListTopBarActionSpec("redo", Icons.AutoMirrored.Filled.Redo, enabled = canRedoActions) {
+                vm.redoLastAction()
+            },
+            ListTopBarActionSpec("new-note", Icons.Filled.Edit, enabled = true) {
+                vm.createNote { created -> onNoteSelected(created) }
+            },
+            ListTopBarActionSpec("new-folder", Icons.Filled.CreateNewFolder, enabled = true) {
+                showingCreateFolderDialog = true
+            },
+            ListTopBarActionSpec("recently-deleted", Icons.Filled.Delete, enabled = true) {
+                showingRecentlyDeleted = true
+            }
+        )
+    }
+
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+
+    Scaffold(topBar = {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            val totalWidthPx = with(density) { maxWidth.toPx() } - with(density) { 20.dp.toPx() }
+            val iconUnitPx = with(density) { 28.dp.toPx() }
+            val spacingPx = with(density) { 8.dp.toPx() }
+            val backVisible = showingRecentlyDeleted || currentFolder != null
+            val selectVisible = !showingRecentlyDeleted
+            val leadingUnits = (if (backVisible) 1 else 0) + (if (selectVisible) 1 else 0)
+            val leadingWidthPx = if (leadingUnits == 0) 0f else {
+                (leadingUnits * iconUnitPx) + ((leadingUnits - 1) * spacingPx)
+            }
+
+            val titleTextLayout = textMeasurer.measure(
+                text = screenTitle,
+                style = MaterialTheme.typography.titleMedium
+            )
+            val editableTopLevel = !showingRecentlyDeleted && currentFolder == null
+            val titleWidthPx =
+                titleTextLayout.size.width.toFloat() + if (editableTopLevel) with(density) { 24.dp.toPx() } else 0f
+
+            val layout = computeTopBarLayout(
+                totalWidthPx = totalWidthPx,
+                leadingWidthPx = leadingWidthPx,
+                titleWidthPx = titleWidthPx,
+                actionCount = if (showingRecentlyDeleted || selectionMode) 0 else topBarActionSpecs.size + 1,
+                actionWidthPx = iconUnitPx,
+                spacingPx = spacingPx,
+                overflowButtonWidthPx = iconUnitPx
+            )
+
+            ChromeActionBar(style = editorChromeStyle, modifier = Modifier.fillMaxWidth()) {
+                if (backVisible) {
+                    IconButton(
+                        onClick = {
+                            if (showingRecentlyDeleted) showingRecentlyDeleted = false else vm.navigateToParentFolder()
+                        },
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+                if (selectVisible) {
+                    IconButton(
+                        onClick = {
+                            selectionMode = !selectionMode
+                            if (!selectionMode) selectedNoteIds = emptySet()
+                        },
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (selectionMode) {
+                                Icons.Filled.CheckBox
+                            } else {
+                                Icons.Outlined.CheckBoxOutlineBlank
+                            },
+                            contentDescription = if (selectionMode) "Finish selecting notes" else "Select notes"
+                        )
+                    }
+                }
+
+                if (editableTopLevel) {
+                    TextButton(onClick = {
+                        renameMainListTitle = mainListTitle
+                        showingRenameMainListDialog = true
+                    },
+                        modifier = Modifier.height(30.dp),
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                screenTitle,
+                                maxLines = 1,
+                                overflow = if (layout.ellipsizeTitle) TextOverflow.Ellipsis else TextOverflow.Clip
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Filled.Edit, contentDescription = "Edit main list title")
                         }
                     }
-                },
-                actions = {
-                    if (!showingRecentlyDeleted) {
-                        if (selectionMode) {
-                            TextButton(
-                                onClick = {
-                                    selectionMode = false
-                                    selectedNoteIds = emptySet()
-                                }
-                            ) {
-                                Text("Cancel")
-                            }
-                            TextButton(
-                                onClick = {
-                                    onExportSelectedNotes(notes.filter { selectedNoteIds.contains(it.id) })
-                                    selectionMode = false
-                                    selectedNoteIds = emptySet()
-                                },
-                                enabled = selectedNoteIds.isNotEmpty()
-                            ) {
-                                Text("Export")
-                            }
-                        } else {
-                            TextButton(onClick = { vm.undoLastAction() }, enabled = canUndoActions) {
-                                Text("Undo")
-                            }
-                            TextButton(onClick = { selectionMode = true }) {
-                                Text("Select")
-                            }
-                            TextButton(onClick = { showingRecentlyDeleted = true }) {
-                                Text("Deleted")
-                            }
-                            IconButton(onClick = { actionsMenuExpanded = true }) {
-                                Icon(Icons.Filled.MoreVert, contentDescription = "More actions")
-                            }
-                            DropdownMenu(
-                                expanded = actionsMenuExpanded,
-                                onDismissRequest = { actionsMenuExpanded = false }
-                            ) {
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .height(30.dp)
+                            .weight(1f, fill = false),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = screenTitle,
+                            maxLines = 1,
+                            overflow = if (layout.ellipsizeTitle) TextOverflow.Ellipsis else TextOverflow.Clip
+                        )
+                    }
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                if (selectionMode && !showingRecentlyDeleted) {
+                    IconButton(
+                        onClick = { showingBulkActions = true },
+                        enabled = selectedNoteIds.isNotEmpty(),
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.MoreVert,
+                            contentDescription = "Selection actions",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                } else if (!showingRecentlyDeleted) {
+                    val visiblePromotable = (layout.visibleActionCount - 1).coerceAtLeast(0)
+                    topBarActionSpecs.take(visiblePromotable).forEach { spec ->
+                        IconButton(
+                            onClick = spec.onClick,
+                            enabled = spec.enabled,
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(spec.icon, contentDescription = spec.id)
+                        }
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { actionsMenuExpanded = true },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = "More actions",
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = actionsMenuExpanded,
+                            onDismissRequest = { actionsMenuExpanded = false }
+                        ) {
+                            topBarActionSpecs.drop(visiblePromotable).forEach { spec ->
                                 DropdownMenuItem(
-                                    text = { Text("New note") },
+                                    text = { Text(spec.menuLabel) },
                                     onClick = {
                                         actionsMenuExpanded = false
-                                        vm.createNote { created ->
-                                            onNoteSelected(created)
-                                        }
+                                        if (spec.enabled) spec.onClick()
                                     }
                                 )
+                            }
+                            AppearanceSetting.entries.forEach { setting ->
                                 DropdownMenuItem(
-                                    text = { Text("New folder") },
-                                    leadingIcon = {
-                                        Icon(Icons.Filled.CreateNewFolder, contentDescription = null)
+                                    text = {
+                                        Text(
+                                            if (setting == appearanceSetting) {
+                                                "✓ Mode: ${setting.label}"
+                                            } else {
+                                                "Mode: ${setting.label}"
+                                            }
+                                        )
                                     },
                                     onClick = {
                                         actionsMenuExpanded = false
-                                        showingCreateFolderDialog = true
-                                    }
-                                )
-                                if (currentFolder == null) {
-                                    DropdownMenuItem(
-                                        text = { Text("Rename Main List") },
-                                        onClick = {
-                                            actionsMenuExpanded = false
-                                            renameMainListTitle = mainListTitle
-                                            showingRenameMainListDialog = true
-                                        }
-                                    )
-                                }
-                                DropdownMenuItem(
-                                    text = { Text("Appearance") },
-                                    onClick = {
-                                        actionsMenuExpanded = false
-                                        appearanceMenuExpanded = true
+                                        onAppearanceSettingChanged(setting)
                                     }
                                 )
                             }
-                            DropdownMenu(
-                                expanded = appearanceMenuExpanded,
-                                onDismissRequest = { appearanceMenuExpanded = false }
-                            ) {
-                                AppearanceSetting.entries.forEach { setting ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                if (setting == appearanceSetting) {
-                                                    "✓ ${setting.label}"
-                                                } else {
-                                                    setting.label
-                                                }
-                                            )
-                                        },
-                                        onClick = {
-                                            onAppearanceSettingChanged(setting)
-                                            appearanceMenuExpanded = false
-                                        }
-                                    )
-                                }
+                            EditorChromeStyle.entries.forEach { style ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (style == editorChromeStyle) {
+                                                "✓ Style: ${style.label}"
+                                            } else {
+                                                "Style: ${style.label}"
+                                            }
+                                        )
+                                    },
+                                    onClick = {
+                                        actionsMenuExpanded = false
+                                        onEditorChromeStyleChanged(style)
+                                    }
+                                )
+                            }
+                            if (currentFolder == null) {
+                                DropdownMenuItem(
+                                    text = { Text("Rename Main List") },
+                                    onClick = {
+                                        actionsMenuExpanded = false
+                                        renameMainListTitle = mainListTitle
+                                        showingRenameMainListDialog = true
+                                    }
+                                )
                             }
                         }
                     }
                 }
-            )
+            }
         }
-    ) { padding ->
+    }) { padding ->
         val visibleNotes = if (showingRecentlyDeleted) recentlyDeletedNotes else notes
 
         Column(
@@ -521,7 +763,26 @@ fun NotesListScreen(
                                     selectedNoteIds + toggled.id
                                 }
                             },
-                            onPreviewRequested = { previewedNote = it },
+                            onLongPress = { pressed ->
+                                if (showingRecentlyDeleted) return@NoteListRow
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                val selectedCount = selectedNoteIds.size
+                                val isSelected = selectedNoteIds.contains(pressed.id)
+                                when {
+                                    selectedCount == 0 -> {
+                                        previewedNote = pressed
+                                    }
+                                    selectedCount == 1 && isSelected -> {
+                                        previewedNote = pressed
+                                    }
+                                    selectedCount > 1 && isSelected -> {
+                                        showingBulkActions = true
+                                    }
+                                    else -> {
+                                        previewedNote = pressed
+                                    }
+                                }
+                            },
                             onRestore = vm::restoreNote,
                             onPermanentDelete = vm::permanentlyDeleteNote
                         )
@@ -629,7 +890,7 @@ private fun NoteListRow(
     selected: Boolean,
     onNoteSelected: (Note?) -> Unit,
     onSelectionToggled: (Note) -> Unit,
-    onPreviewRequested: (Note) -> Unit,
+    onLongPress: (Note) -> Unit,
     onRestore: (Note) -> Unit,
     onPermanentDelete: (Note) -> Unit
 ) {
@@ -654,9 +915,7 @@ private fun NoteListRow(
                         }
                     },
                     onLongClick = {
-                        if (!selectionMode && !showingRecentlyDeleted) {
-                            onPreviewRequested(note)
-                        }
+                        if (!showingRecentlyDeleted) onLongPress(note)
                     }
                 ),
             colors = CardDefaults.cardColors(containerColor = containerColor)
@@ -692,7 +951,7 @@ private fun NoteListRow(
                 }
 
                 Text(
-                    note.content.take(120),
+                    plainTextFromStoredContent(note.content).take(120),
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 2
                 )
@@ -750,7 +1009,7 @@ private fun NotePreviewDialog(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = note.content.ifBlank { "No content yet" },
+                        text = plainTextFromStoredContent(note.content).ifBlank { "No content yet" },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -779,6 +1038,23 @@ private fun NotePreviewDialog(
             }
         }
     }
+}
+
+private data class ListTopBarActionSpec(
+    val id: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val enabled: Boolean,
+    val onClick: () -> Unit
+) {
+    val menuLabel: String
+        get() = when (id) {
+            "undo" -> "Undo"
+            "redo" -> "Redo"
+            "new-note" -> "New note"
+            "new-folder" -> "New folder"
+            "recently-deleted" -> "Recently Deleted"
+            else -> id
+        }
 }
 
 private fun folderDepth(folder: Folder, allFolders: List<Folder>): Int {
