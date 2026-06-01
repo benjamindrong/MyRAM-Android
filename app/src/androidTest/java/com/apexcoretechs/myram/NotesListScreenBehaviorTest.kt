@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import androidx.test.espresso.Espresso.pressBack
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -20,25 +21,34 @@ class NotesListScreenBehaviorTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     private fun openNewNote() {
-        val overflowButtons = composeRule.onAllNodesWithContentDescription("More actions")
-        if (overflowButtons.fetchSemanticsNodes().isNotEmpty()) {
-            overflowButtons[0].performClick()
-            composeRule.onNodeWithText("New note").performClick()
-        } else {
-            val newNoteButtons = composeRule.onAllNodesWithContentDescription("New note")
-            assertTrue(newNoteButtons.fetchSemanticsNodes().isNotEmpty())
-            newNoteButtons[0].performClick()
+        val directByContentDescription = composeRule.onAllNodesWithContentDescription("new-note")
+        if (directByContentDescription.fetchSemanticsNodes().isNotEmpty()) {
+            directByContentDescription[0].performClick()
+            return
         }
+
+        val overflowButtons = composeRule.onAllNodesWithContentDescription("More actions")
+        assertTrue(overflowButtons.fetchSemanticsNodes().isNotEmpty())
+        overflowButtons[0].performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("New note", ignoreCase = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithText("New note", ignoreCase = true)[0].performClick()
     }
 
     @Test
     fun longPressSelectedNote_showsBulkActions_whenMultipleSelected() {
         openNewNote()
-        composeRule.onAllNodesWithContentDescription("Back")[0].performClick()
+        closeEditor()
         openNewNote()
-        composeRule.onAllNodesWithContentDescription("Back")[0].performClick()
+        closeEditor()
 
-        composeRule.onNodeWithText("Untitled").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Untitled")
+                .fetchSemanticsNodes().size >= 2
+        }
         composeRule.onAllNodesWithContentDescription("Select notes")[0].performClick()
 
         composeRule.onAllNodesWithText("Untitled")[0].performClick()
@@ -49,5 +59,15 @@ class NotesListScreenBehaviorTest {
         }
 
         composeRule.onNodeWithText("Choose an action for selected notes.").assertIsDisplayed()
+    }
+
+    private fun closeEditor() {
+        pressBack()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithContentDescription("Select notes")
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodesWithContentDescription("More actions")
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
     }
 }
