@@ -341,20 +341,22 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
     }
 
     override fun toggleSelectAll() {
-        val editable = text ?: return
-        if (editable.isEmpty()) return
-        requestFocus()
-        val target = toggleSelectAllRange(
-            length = editable.length,
-            selectionStart = selectionStart,
-            selectionEnd = selectionEnd
-        )
-        if (target.start == target.end) {
-            setSelection(target.end)
-        } else {
-            setSelection(target.start, target.end)
+        post {
+            val editable = text ?: return@post
+            if (editable.isEmpty()) return@post
+            requestFocus()
+            val target = toggleSelectAllRange(
+                length = editable.length,
+                selectionStart = selectionStart,
+                selectionEnd = selectionEnd
+            )
+            if (target.start == target.end) {
+                setSelection(target.end)
+            } else {
+                setSelection(target.start, target.end)
+            }
+            emitFormatState()
         }
-        emitFormatState()
     }
 
     private fun publishChanges() {
