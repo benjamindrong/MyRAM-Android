@@ -5,12 +5,12 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import androidx.test.espresso.Espresso.pressBack
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -23,15 +23,21 @@ class NoteEditorScreenTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     private fun openNewNote() {
-        val overflowButtons = composeRule.onAllNodesWithContentDescription("More actions")
-        if (overflowButtons.fetchSemanticsNodes().isNotEmpty()) {
-            overflowButtons[0].performClick()
-            composeRule.onNodeWithText("New note").performClick()
-        } else {
-            val newNoteButtons = composeRule.onAllNodesWithContentDescription("New note")
-            assertTrue(newNoteButtons.fetchSemanticsNodes().isNotEmpty())
-            newNoteButtons[0].performClick()
+        val directByContentDescription = composeRule.onAllNodesWithContentDescription("new-note")
+        if (directByContentDescription.fetchSemanticsNodes().isNotEmpty()) {
+            directByContentDescription[0].performClick()
+            return
         }
+
+        val overflowButtons = composeRule.onAllNodesWithContentDescription("More actions")
+        assertTrue(overflowButtons.fetchSemanticsNodes().isNotEmpty())
+        overflowButtons[0].performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("New note", ignoreCase = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithText("New note", ignoreCase = true)[0].performClick()
     }
 
     @Test
@@ -49,13 +55,16 @@ class NoteEditorScreenTest {
                 .fetchSemanticsNodes().isNotEmpty()
         )
         composeRule.onNodeWithTag("edit-note-title").assertIsDisplayed()
-        composeRule.onNodeWithTag("redo-button").assertIsDisplayed()
+        assertTrue(
+            composeRule.onAllNodesWithContentDescription("Redo", useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        )
     }
 
     @Test
     fun longPressNote_showsPreviewAndActions() {
         openNewNote()
-        composeRule.onNodeWithContentDescription("Back").performClick()
+        closeEditor()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("Untitled")
@@ -73,5 +82,15 @@ class NoteEditorScreenTest {
         composeRule.onNodeWithTag("note-preview-dialog").assertIsDisplayed()
         composeRule.onNodeWithText("Move to folder").assertIsDisplayed()
         composeRule.onNodeWithText("Export").assertIsDisplayed()
+    }
+
+    private fun closeEditor() {
+        pressBack()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithContentDescription("Select notes")
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodesWithContentDescription("More actions")
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
     }
 }

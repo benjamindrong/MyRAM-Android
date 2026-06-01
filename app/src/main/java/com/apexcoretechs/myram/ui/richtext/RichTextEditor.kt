@@ -10,6 +10,7 @@ import android.util.TypedValue
 import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.compose.runtime.Composable
@@ -46,6 +47,10 @@ internal class RichTextEditorActions(
         editorProvider()?.withEditable { editable, start, end ->
             toggleStrikethrough(editable, start, end)
         }
+    }
+
+    fun toggleChecklistItem() {
+        editorProvider()?.toggleChecklistItem()
     }
 
     fun applyColor(color: Color) {
@@ -145,6 +150,7 @@ internal interface RichTextEditorBinding {
     fun copySelection()
     fun cutSelection()
     fun pasteClipboard()
+    fun toggleChecklistItem()
     fun toggleSelectAll()
 }
 
@@ -218,6 +224,15 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
     override fun onTextContextMenuItem(id: Int): Boolean = false
 
     override fun isSuggestionsEnabled(): Boolean = false
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_UP) {
+            if (tryToggleChecklistFromTouch(event)) {
+                return true
+            }
+        }
+        return super.onTouchEvent(event)
+    }
 
     fun emitFormatState(onFormatStateChanged: (RichTextFormatState) -> Unit) {
         this.onFormatStateChanged = onFormatStateChanged
@@ -310,15 +325,34 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         publishChanges()
     }
 
+    override fun toggleChecklistItem() {
+        val editable = text ?: return
+        val safeStart = selectionStart.coerceIn(0, editable.length)
+        val safeEnd = selectionEnd.coerceIn(0, editable.length)
+        suppressCallbacks = true
+        val result = toggleChecklistAtSelection(editable, safeStart, safeEnd)
+        suppressCallbacks = false
+        setSelection(
+            result.selectionStart.coerceAtMost(editable.length),
+            result.selectionEnd.coerceAtMost(editable.length)
+        )
+        animateChecklistToggle()
+        publishChanges()
+    }
+
     override fun toggleSelectAll() {
         val editable = text ?: return
         if (editable.isEmpty()) return
-        val start = minOf(selectionStart, selectionEnd)
-        val end = maxOf(selectionStart, selectionEnd)
-        if (start == 0 && end == editable.length) {
-            setSelection(editable.length)
+        requestFocus()
+        val target = toggleSelectAllRange(
+            length = editable.length,
+            selectionStart = selectionStart,
+            selectionEnd = selectionEnd
+        )
+        if (target.start == target.end) {
+            setSelection(target.end)
         } else {
-            setSelection(0, editable.length)
+            setSelection(target.start, target.end)
         }
         emitFormatState()
     }
@@ -332,4 +366,53 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
 
     override val currentText: CharSequence
         get() = text ?: ""
+
+    private fun tryToggleChecklistFromTouch(event: MotionEvent): Boolean {
+        val editable = text ?: return false
+        val layout = layout ?: return false
+        val contentX = event.x - totalPaddingLeft + scrollX
+        val contentY = event.y - totalPaddingTop + scrollY
+        val line = layout.getLineForVertical(contentY.toInt())
+        if (line < 0 || line >= layout.lineCount) return false
+        val offset = layout.getOffsetForHorizontal(line, contentX)
+        if (offset < 0 || offset >= editable.length) return false
+        if (!isChecklistIconAtOffset(editable.toString(), offset)) return false
+
+        suppressCallbacks = true
+        val result = toggleChecklistAtSelection(editable, offset, offset)
+        suppressCallbacks = false
+        setSelection(result.selectionStart.coerceAtMost(editable.length))
+        animateChecklistToggle()
+        publishChanges()
+        return true
+    }
+
+    private fun animateChecklistToggle() {
+        animate().cancel()
+        animate()
+            .alpha(0.85f)
+            .setDuration(70L)
+            .withEndAction {
+                animate().alpha(1f).setDuration(110L).start()
+            }
+            .start()
+    }
+}
+
+internal data class SelectionTarget(val start: Int, val end: Int)
+
+internal fun toggleSelectAllRange(length: Int, selectionStart: Int, selectionEnd: Int): SelectionTarget {
+    if (length <= 0) return SelectionTarget(0, 0)
+    val hasValidSelection = selectionStart >= 0 && selectionEnd >= 0
+    if (!hasValidSelection) return SelectionTarget(0, length)
+
+    val safeStart = selectionStart.coerceIn(0, length)
+    val safeEnd = selectionEnd.coerceIn(0, length)
+    val normalizedStart = minOf(safeStart, safeEnd)
+    val normalizedEnd = maxOf(safeStart, safeEnd)
+    return if (normalizedStart == 0 && normalizedEnd == length) {
+        SelectionTarget(length, length)
+    } else {
+        SelectionTarget(0, length)
+    }
 }

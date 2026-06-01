@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentPaste
@@ -302,6 +303,12 @@ private fun RichTextActionBars(
                         label = "Strikethrough",
                         selected = formatState.strikethrough,
                         onClick = { actions?.toggleStrikethrough() }
+                    )
+                    ToggleFormatIcon(
+                        icon = Icons.Filled.CheckBox,
+                        label = "Checklist",
+                        selected = false,
+                        onClick = { actions?.toggleChecklistItem() }
                     )
                     Box {
                         ToggleFormatIcon(
