@@ -85,6 +85,9 @@ fun NotesListScreen(
     onExportSelectedNotes: (List<Note>) -> Unit,
     onNoteSelected: (Note?) -> Unit
 ) {
+    val topBarControlSize = 44.dp
+    val topBarIconSize = 24.dp
+    val hintIconSize = 16.dp
     val notes by vm.visibleNotes.collectAsState()
     val visibleFolders by vm.visibleFolders.collectAsState()
     val folderActiveNoteCounts by vm.folderActiveNoteCounts.collectAsState()
@@ -111,6 +114,7 @@ fun NotesListScreen(
     var previewedNote by remember { mutableStateOf<Note?>(null) }
     var showingBulkActions by remember { mutableStateOf(false) }
     var showingRenameMainListDialog by remember { mutableStateOf(false) }
+    var showingAppearanceDialog by remember { mutableStateOf(false) }
     var renameMainListTitle by remember { mutableStateOf(mainListTitle) }
     var activeFolderMenuId by remember { mutableStateOf<Int?>(null) }
 
@@ -238,6 +242,43 @@ fun NotesListScreen(
                 ) {
                     Text("Cancel")
                 }
+            }
+        )
+    }
+
+    if (showingAppearanceDialog) {
+        AlertDialog(
+            onDismissRequest = { showingAppearanceDialog = false },
+            title = { Text("Appearance") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Mode", style = MaterialTheme.typography.labelLarge)
+                    AppearanceSetting.entries.forEach { setting ->
+                        TextButton(
+                            onClick = {
+                                onAppearanceSettingChanged(setting)
+                            },
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                        ) {
+                            Text(if (setting == appearanceSetting) "✓ ${setting.label}" else setting.label)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Style", style = MaterialTheme.typography.labelLarge)
+                    EditorChromeStyle.entries.forEach { style ->
+                        TextButton(
+                            onClick = {
+                                onEditorChromeStyleChanged(style)
+                            },
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                        ) {
+                            Text(if (style == editorChromeStyle) "✓ ${style.label}" else style.label)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showingAppearanceDialog = false }) { Text("Done") }
             }
         )
     }
@@ -486,7 +527,7 @@ fun NotesListScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             val totalWidthPx = with(density) { maxWidth.toPx() } - with(density) { 20.dp.toPx() }
-            val iconUnitPx = with(density) { 28.dp.toPx() }
+            val iconUnitPx = with(density) { topBarControlSize.toPx() }
             val spacingPx = with(density) { 8.dp.toPx() }
             val backVisible = showingRecentlyDeleted || currentFolder != null
             val selectVisible = !showingRecentlyDeleted
@@ -499,9 +540,9 @@ fun NotesListScreen(
                 text = screenTitle,
                 style = MaterialTheme.typography.titleMedium
             )
-            val editableTopLevel = !showingRecentlyDeleted && currentFolder == null
+            val editableTitle = !showingRecentlyDeleted
             val titleWidthPx =
-                titleTextLayout.size.width.toFloat() + if (editableTopLevel) with(density) { 24.dp.toPx() } else 0f
+                titleTextLayout.size.width.toFloat() + if (editableTitle) with(density) { 24.dp.toPx() } else 0f
 
             val layout = computeTopBarLayout(
                 totalWidthPx = totalWidthPx,
@@ -519,9 +560,14 @@ fun NotesListScreen(
                         onClick = {
                             if (showingRecentlyDeleted) showingRecentlyDeleted = false else vm.navigateToParentFolder()
                         },
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(topBarControlSize)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(topBarIconSize)
+                        )
                     }
                 }
                 if (selectVisible) {
@@ -530,7 +576,7 @@ fun NotesListScreen(
                             selectionMode = !selectionMode
                             if (!selectionMode) selectedNoteIds = emptySet()
                         },
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(topBarControlSize)
                     ) {
                         Icon(
                             imageVector = if (selectionMode) {
@@ -538,27 +584,45 @@ fun NotesListScreen(
                             } else {
                                 Icons.Outlined.CheckBoxOutlineBlank
                             },
-                            contentDescription = if (selectionMode) "Finish selecting notes" else "Select notes"
+                            contentDescription = if (selectionMode) "Finish selecting notes" else "Select notes",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(topBarIconSize)
                         )
                     }
                 }
 
-                if (editableTopLevel) {
+                if (editableTitle) {
                     TextButton(onClick = {
-                        renameMainListTitle = mainListTitle
-                        showingRenameMainListDialog = true
+                        if (currentFolder == null) {
+                            renameMainListTitle = mainListTitle
+                            showingRenameMainListDialog = true
+                        } else {
+                            currentFolder?.let { folder ->
+                                renameFolderName = folder.name
+                                folderToRename = folder
+                            }
+                        }
                     },
-                        modifier = Modifier.height(30.dp),
+                        modifier = Modifier
+                            .height(topBarControlSize)
+                            .testTag(if (currentFolder == null) "edit-main-list-title" else "edit-folder-title"),
                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 screenTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = if (layout.ellipsizeTitle) TextOverflow.Ellipsis else TextOverflow.Clip
                             )
                             Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Filled.Edit, contentDescription = "Edit main list title")
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = if (currentFolder == null) "Edit main list title" else "Edit folder title",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(hintIconSize)
+                            )
                         }
                     }
                 } else {
@@ -570,6 +634,8 @@ fun NotesListScreen(
                     ) {
                         Text(
                             text = screenTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = if (layout.ellipsizeTitle) TextOverflow.Ellipsis else TextOverflow.Clip
                         )
@@ -582,12 +648,13 @@ fun NotesListScreen(
                     IconButton(
                         onClick = { showingBulkActions = true },
                         enabled = selectedNoteIds.isNotEmpty(),
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(topBarControlSize)
                     ) {
                         Icon(
                             Icons.Filled.MoreVert,
                             contentDescription = "Selection actions",
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(topBarIconSize),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 } else if (!showingRecentlyDeleted) {
@@ -596,21 +663,27 @@ fun NotesListScreen(
                         IconButton(
                             onClick = spec.onClick,
                             enabled = spec.enabled,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(topBarControlSize)
                         ) {
-                            Icon(spec.icon, contentDescription = spec.id)
+                            Icon(
+                                spec.icon,
+                                contentDescription = spec.id,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(topBarIconSize)
+                            )
                         }
                     }
 
                     Box {
                         IconButton(
                             onClick = { actionsMenuExpanded = true },
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(topBarControlSize)
                         ) {
                             Icon(
                                 Icons.Filled.MoreVert,
                                 contentDescription = "More actions",
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(topBarIconSize),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         DropdownMenu(
@@ -626,50 +699,13 @@ fun NotesListScreen(
                                     }
                                 )
                             }
-                            AppearanceSetting.entries.forEach { setting ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            if (setting == appearanceSetting) {
-                                                "✓ Mode: ${setting.label}"
-                                            } else {
-                                                "Mode: ${setting.label}"
-                                            }
-                                        )
-                                    },
-                                    onClick = {
-                                        actionsMenuExpanded = false
-                                        onAppearanceSettingChanged(setting)
-                                    }
-                                )
-                            }
-                            EditorChromeStyle.entries.forEach { style ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            if (style == editorChromeStyle) {
-                                                "✓ Style: ${style.label}"
-                                            } else {
-                                                "Style: ${style.label}"
-                                            }
-                                        )
-                                    },
-                                    onClick = {
-                                        actionsMenuExpanded = false
-                                        onEditorChromeStyleChanged(style)
-                                    }
-                                )
-                            }
-                            if (currentFolder == null) {
-                                DropdownMenuItem(
-                                    text = { Text("Rename Main List") },
-                                    onClick = {
-                                        actionsMenuExpanded = false
-                                        renameMainListTitle = mainListTitle
-                                        showingRenameMainListDialog = true
-                                    }
-                                )
-                            }
+                            DropdownMenuItem(
+                                text = { Text("Appearance") },
+                                onClick = {
+                                    actionsMenuExpanded = false
+                                    showingAppearanceDialog = true
+                                }
+                            )
                         }
                     }
                 }
@@ -855,7 +891,7 @@ private fun FolderListRow(
                 Icon(
                     Icons.Filled.Folder,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(folder.name, style = MaterialTheme.typography.titleMedium)

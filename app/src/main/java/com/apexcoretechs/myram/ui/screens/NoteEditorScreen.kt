@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.KeyboardHide
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
@@ -82,6 +83,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -254,7 +257,8 @@ private fun RichTextActionBars(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onToggleFormattingControls: () -> Unit,
-    onHideKeyboard: () -> Unit,
+    keyboardVisible: Boolean,
+    onToggleKeyboard: () -> Unit,
     onSetFontSize: (Int) -> Unit,
     chromeStyle: EditorChromeStyle,
     modifier: Modifier = Modifier
@@ -279,6 +283,7 @@ private fun RichTextActionBars(
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                Box(modifier = Modifier.testTag("keyboard-control-overflow-panel"))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     ToggleFormatIcon(
                         icon = Icons.Filled.FormatBold,
@@ -303,12 +308,6 @@ private fun RichTextActionBars(
                         label = "Strikethrough",
                         selected = formatState.strikethrough,
                         onClick = { actions?.toggleStrikethrough() }
-                    )
-                    ToggleFormatIcon(
-                        icon = Icons.Filled.CheckBox,
-                        label = "Checklist",
-                        selected = false,
-                        onClick = { actions?.toggleChecklistItem() }
                     )
                     Box {
                         ToggleFormatIcon(
@@ -360,10 +359,10 @@ private fun RichTextActionBars(
                 .testTag("keyboard-control-bar")
         ) {
             ToggleFormatIcon(
-                icon = Icons.Filled.KeyboardHide,
-                label = "Hide keyboard",
+                icon = if (keyboardVisible) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
+                label = "Keyboard toggle",
                 selected = false,
-                onClick = onHideKeyboard
+                onClick = onToggleKeyboard
             )
             ToggleFormatIcon(
                 icon = Icons.AutoMirrored.Filled.Undo,
@@ -383,11 +382,13 @@ private fun RichTextActionBars(
             ToggleFormatIcon(icon = Icons.Filled.ContentCopy, label = "Copy", selected = false, onClick = { actions?.copySelection() })
             ToggleFormatIcon(icon = Icons.Filled.ContentPaste, label = "Paste", selected = false, onClick = { actions?.pasteClipboard() })
             ToggleFormatIcon(icon = Icons.Filled.SelectAll, label = "Select all", selected = false, onClick = { actions?.toggleSelectAll() })
+            ToggleFormatIcon(icon = Icons.Filled.CheckBox, label = "Checklist", selected = false, onClick = { actions?.toggleChecklistItem() })
             ToggleFormatIcon(
                 icon = if (showingFormattingControls) Icons.Filled.Close else Icons.Filled.MoreVert,
                 label = "Formatting menu",
                 selected = showingFormattingControls,
-                onClick = onToggleFormattingControls
+                onClick = onToggleFormattingControls,
+                modifier = Modifier.testTag("keyboard-control-overflow-toggle")
             )
         }
     }
@@ -399,10 +400,11 @@ private fun ToggleFormatIcon(
     label: String,
     selected: Boolean,
     enabled: Boolean = true,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    IconButton(onClick = onClick, modifier = Modifier.size(30.dp), enabled = enabled) {
+    IconButton(onClick = onClick, modifier = modifier.size(30.dp), enabled = enabled) {
         Icon(
             imageVector = icon,
             contentDescription = label,
@@ -422,6 +424,9 @@ fun NoteEditorScreen(
     onShareNote: (Note) -> Unit,
     onBack: () -> Unit
 ) {
+    val topBarControlSize = 44.dp
+    val topBarIconSize = 24.dp
+    val hintIconSize = 16.dp
     var title by remember(note?.id) { mutableStateOf(TextFieldValue(note?.title ?: "")) }
     var storedContent by remember(note?.id) { mutableStateOf(note?.content ?: "") }
     var plainContent by remember(note?.id) { mutableStateOf(plainTextFromStoredContent(note?.content ?: "")) }
@@ -442,6 +447,7 @@ fun NoteEditorScreen(
     var titleDraft by remember(note?.id) { mutableStateOf(title.text) }
     var showingFormattingControls by remember(note?.id) { mutableStateOf(false) }
     var editorActions by remember(note?.id) { mutableStateOf<RichTextEditorActions?>(null) }
+    var keyboardVisible by remember(note?.id) { mutableStateOf(false) }
     var formatState by remember(note?.id) {
                 mutableStateOf(
                     RichTextFormatState(
@@ -458,6 +464,7 @@ fun NoteEditorScreen(
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val editorFocusRequester = remember { FocusRequester() }
 
     val attachments by vm.noteAttachments(note?.id).collectAsState(initial = emptyList())
     val canUndoActions by vm.canUndoActions.collectAsState()
@@ -709,7 +716,7 @@ fun NoteEditorScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             val totalWidthPx = with(density) { maxWidth.toPx() } - with(density) { 20.dp.toPx() }
-            val iconWidthPx = with(density) { 28.dp.toPx() }
+            val iconWidthPx = with(density) { topBarControlSize.toPx() }
             val spacingPx = with(density) { 8.dp.toPx() }
             val titleDisplay = title.text.ifBlank { "Untitled" }
             val titleWidthPx = textMeasurer.measure(
@@ -744,37 +751,50 @@ fun NoteEditorScreen(
                             showingTitleEditor = true
                         },
                         modifier = Modifier
-                            .height(30.dp)
+                            .height(topBarControlSize)
                             .testTag("edit-note-title"),
                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 titleDisplay,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = if (layout.ellipsizeTitle) TextOverflow.Ellipsis else TextOverflow.Clip
                             )
                             Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Filled.Edit, contentDescription = "Edit title")
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = "Edit title",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(hintIconSize)
+                            )
                         }
                     }
                     Spacer(Modifier.weight(1f))
 
                     editorTopActions.take(layout.visibleActionCount.coerceAtLeast(0)).forEach { action ->
-                        IconButton(onClick = action.onClick, modifier = Modifier.size(30.dp)) {
-                            Icon(action.icon, contentDescription = action.label)
+                        IconButton(onClick = action.onClick, modifier = Modifier.size(topBarControlSize)) {
+                            Icon(
+                                action.icon,
+                                contentDescription = action.label,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(topBarIconSize)
+                            )
                         }
                     }
 
                     Box {
                         IconButton(
                             onClick = { isAttachmentMenuExpanded = true },
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(topBarControlSize)
                         ) {
                             Icon(
                                 Icons.Filled.MoreVert,
                                 contentDescription = "More note actions",
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(topBarIconSize),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         DropdownMenu(
@@ -837,13 +857,16 @@ fun NoteEditorScreen(
                 .padding(16.dp)
                 .imePadding()
         ) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
             ) {
                 RichTextEditor(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .focusRequester(editorFocusRequester),
                     storedContent = storedContent,
                     onStoredContentChanged = { newStored ->
                         markContentEdited(newStored)
@@ -857,7 +880,7 @@ fun NoteEditorScreen(
                     actionsSink = { editorActions = it },
                     contentTextColor = MaterialTheme.colorScheme.onSurface,
                     placeholderText = "Start typing...",
-                    bottomContentInset = 112.dp
+                    bottomContentInset = 0.dp
                 )
 
                 RichTextActionBars(
@@ -871,17 +894,25 @@ fun NoteEditorScreen(
                     onToggleFormattingControls = {
                         showingFormattingControls = !showingFormattingControls
                     },
-                    onHideKeyboard = {
-                        keyboardController?.hide()
-                        focusManager.clearFocus()
+                    keyboardVisible = keyboardVisible,
+                    onToggleKeyboard = {
+                        if (keyboardVisible) {
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                            keyboardVisible = false
+                        } else {
+                            editorFocusRequester.requestFocus()
+                            keyboardController?.show()
+                            keyboardVisible = true
+                        }
                     },
                     onSetFontSize = { size ->
                         editorActions?.applyFontSize(size)
                     },
                     chromeStyle = editorChromeStyle,
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = 8.dp)
+                        .align(Alignment.End)
+                        .padding(top = 8.dp)
                 )
             }
 
@@ -951,13 +982,13 @@ fun NoteEditorScreen(
                             items(suggestionLabels) { label ->
                                 Surface(
                                     shape = RoundedCornerShape(100),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                                 ) {
                                     Text(
                                         text = suggestionLabelDisplayName(label),
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }

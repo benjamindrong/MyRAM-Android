@@ -5,9 +5,10 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import androidx.test.espresso.Espresso.pressBack
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -54,11 +55,37 @@ class NotesListScreenBehaviorTest {
         composeRule.onAllNodesWithText("Untitled")[0].performClick()
         composeRule.onAllNodesWithText("Untitled")[1].performClick()
 
-        composeRule.onAllNodesWithText("Untitled")[0].performTouchInput {
-            longClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithContentDescription("Selection actions")
+                .fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onAllNodesWithContentDescription("Selection actions")[0].performClick()
 
         composeRule.onNodeWithText("Choose an action for selected notes.").assertIsDisplayed()
+    }
+
+    @Test
+    fun folderTitle_canBeRenamedFromTopBar() {
+        val folderName = "UITest Folder"
+        val renamedFolderName = "UITest Folder Renamed"
+
+        val overflowButtons = composeRule.onAllNodesWithContentDescription("More actions")
+        assertTrue(overflowButtons.fetchSemanticsNodes().isNotEmpty())
+        overflowButtons[0].performClick()
+        composeRule.onNodeWithText("New folder").performClick()
+
+        composeRule.onNodeWithText("Folder name").performClick()
+        composeRule.onNodeWithText("Folder name").performTextInput(folderName)
+        composeRule.onNodeWithText("Create").performClick()
+
+        composeRule.onNodeWithText(folderName).performClick()
+        composeRule.onNodeWithTag("edit-folder-title").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Folder name").performClick()
+        composeRule.onNodeWithText("Folder name").performTextClearance()
+        composeRule.onNodeWithText("Folder name").performTextInput(renamedFolderName)
+        composeRule.onNodeWithText("Save").performClick()
+
+        composeRule.onNodeWithText(renamedFolderName).assertIsDisplayed()
     }
 
     private fun closeEditor() {

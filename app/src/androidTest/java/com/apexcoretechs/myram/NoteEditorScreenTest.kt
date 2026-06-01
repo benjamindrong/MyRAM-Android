@@ -51,13 +51,17 @@ class NoteEditorScreenTest {
 
         composeRule.onNodeWithTag("keyboard-control-bar").assertIsDisplayed()
         assertTrue(
-            composeRule.onAllNodesWithContentDescription("Hide keyboard")
+            composeRule.onAllNodesWithContentDescription("Keyboard toggle")
                 .fetchSemanticsNodes().isNotEmpty()
         )
         composeRule.onNodeWithTag("edit-note-title").assertIsDisplayed()
         assertTrue(
             composeRule.onAllNodesWithContentDescription("Redo", useUnmergedTree = true)
                 .fetchSemanticsNodes().isNotEmpty()
+        )
+        assertTrue(
+            composeRule.onAllNodesWithTag("keyboard-control-overflow-panel")
+                .fetchSemanticsNodes().isEmpty()
         )
     }
 
