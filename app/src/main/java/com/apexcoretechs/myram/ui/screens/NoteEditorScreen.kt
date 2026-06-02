@@ -536,7 +536,8 @@ fun NoteEditorScreen(
     fun currentSnapshot() = EditorSnapshot(
         title = title,
         storedContent = storedContent,
-        plainContent = plainContent
+        plainContent = plainContent,
+        pinnedTextItems = pinnedTextItems
     )
 
     fun pushUndoSnapshot(snapshot: EditorSnapshot) {
@@ -585,6 +586,7 @@ fun NoteEditorScreen(
             title = snapshot.title
             storedContent = snapshot.storedContent
             plainContent = snapshot.plainContent
+            note?.let { vm.replacePinnedText(it, snapshot.pinnedTextItems) }
             isRestoringUndo = false
         } else {
             vm.undoLastAction()
@@ -602,6 +604,7 @@ fun NoteEditorScreen(
         title = snapshot.title
         storedContent = snapshot.storedContent
         plainContent = snapshot.plainContent
+        note?.let { vm.replacePinnedText(it, snapshot.pinnedTextItems) }
         isRestoringUndo = false
     }
 
@@ -935,7 +938,11 @@ fun NoteEditorScreen(
                     onUpdate = vm::updatePinnedText,
                     onMove = vm::movePinnedText,
                     onUnpin = { pinnedText ->
+                        flushPendingUndoSnapshot()
+                        val before = currentSnapshot()
                         editorActions?.appendStoredContentOnNewLine(pinnedText.sourceContent)
+                        redoHistory = emptyList()
+                        undoHistory = (undoHistory + before).takeLast(200)
                         vm.unpinText(pinnedText)
                     }
                 )
@@ -988,10 +995,14 @@ fun NoteEditorScreen(
                         editorActions?.applyFontSize(size)
                     },
                     onPinSelection = {
+                        flushPendingUndoSnapshot()
+                        val before = currentSnapshot()
                         val selection = editorActions?.pinSelection()
                         if (selection != null) {
                             note?.let { current ->
                                 arePinnedExpanded = true
+                                redoHistory = emptyList()
+                                undoHistory = (undoHistory + before).takeLast(200)
                                 vm.addPinnedText(
                                     note = current,
                                     text = selection.text,
@@ -1403,7 +1414,8 @@ private fun suggestionLabelDisplayName(label: String): String {
 private data class EditorSnapshot(
     val title: TextFieldValue,
     val storedContent: String,
-    val plainContent: String
+    val plainContent: String,
+    val pinnedTextItems: List<PinnedText> = emptyList()
 )
 
 private data class EditorTopBarAction(

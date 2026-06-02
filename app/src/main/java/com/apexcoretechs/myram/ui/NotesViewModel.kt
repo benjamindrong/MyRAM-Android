@@ -574,6 +574,22 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         touchNote(pinnedText.noteId, now)
     }
 
+    fun replacePinnedText(note: Note, pinnedText: List<PinnedText>) = viewModelScope.launch {
+        val existing = repo.noteDao.getPinnedTextForNotesOnce(listOf(note.id))
+        existing.forEach { repo.noteDao.deletePinnedText(it) }
+        pinnedText.sortedPinnedText().forEachIndexed { index, item ->
+            repo.noteDao.insertPinnedText(
+                item.copy(
+                    id = 0,
+                    noteId = note.id,
+                    sortOrder = index,
+                    lastModified = System.currentTimeMillis()
+                )
+            )
+        }
+        touchNote(note.id)
+    }
+
     fun addPhotoAttachments(noteId: Int, uris: List<Uri>) = viewModelScope.launch {
         if (noteId <= 0 || uris.isEmpty()) return@launch
         uris.forEach { uri ->
