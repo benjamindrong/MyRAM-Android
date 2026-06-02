@@ -63,6 +63,10 @@ class NoteEditorScreenTest {
             composeRule.onAllNodesWithTag("keyboard-control-overflow-panel")
                 .fetchSemanticsNodes().isEmpty()
         )
+        assertTrue(
+            composeRule.onAllNodesWithText("Optional recommendations")
+                .fetchSemanticsNodes().isEmpty()
+        )
     }
 
     @Test

@@ -113,7 +113,7 @@ Use:
 - RAM Dump
 - Defrag
 - Recall
-- Pinned RAM
+- Highlights
 - Keep in View
 - Note Bundles
 - Archive

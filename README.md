@@ -58,7 +58,7 @@ Suggested product terms:
 - **RAM Dump**: quick capture for raw thoughts, pasted text, screenshots, temporary notes, and fragments
 - **Defrag**: review mode for reorganizing scattered notes
 - **Recall**: search and retrieval
-- **Pinned RAM** or **Keep in View**: user-selected notes kept easier to access
+- **Highlights**: important text surfaced to the top of a note
 - **Note Bundles**: related notes, images, OCR text, and fragments grouped together
 - **Archive**: move notes out of the main view without deleting them
 
