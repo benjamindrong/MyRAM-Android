@@ -1104,7 +1104,7 @@ private fun PinnedTextSection(
                 onClick = onAdd,
                 modifier = Modifier.testTag("pinned-text-add")
             ) {
-                Text("Highlights (0)")
+                Text("Pinned (0)")
             }
         }
         return
@@ -1131,12 +1131,12 @@ private fun PinnedTextSection(
                 ) {
                     Icon(
                         imageVector = if (expanded) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Highlights",
+                        contentDescription = "Pinned",
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Text(
-                    text = "Highlights (${pinnedTextItems.size})",
+                    text = "Pinned (${pinnedTextItems.size})",
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f)
                 )
@@ -1191,8 +1191,8 @@ private fun PinnedTextSection(
                 val preview = pinnedTextItems.firstOrNull()?.text
                     ?.lineSequence()
                     ?.firstOrNull()
-                    ?.ifBlank { "Highlight" }
-                    ?: "Highlight"
+                    ?.ifBlank { "Pinned" }
+                    ?: "Pinned"
                 Text(
                     text = preview,
                     style = MaterialTheme.typography.bodyMedium,
@@ -1282,11 +1282,11 @@ private fun PinnedTextRow(
                     .weight(1f)
                     .testTag("pinned-text-field"),
                 maxLines = 4,
-                placeholder = { Text("Highlight") }
+                placeholder = { Text("Pinned") }
             )
         } else {
             Text(
-                text = pinnedText.text.ifBlank { "Highlight" },
+                text = pinnedText.text.ifBlank { "Pinned" },
                 modifier = Modifier
                     .weight(1f)
                     .padding(vertical = 8.dp),
