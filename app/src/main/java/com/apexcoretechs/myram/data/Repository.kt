@@ -17,7 +17,10 @@ class Repository private constructor(context: Context) {
             MIGRATION_3_4,
             MIGRATION_4_5,
             MIGRATION_5_6,
-            MIGRATION_6_7
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+            MIGRATION_8_9,
+            MIGRATION_9_10
         )
         .build()
 
@@ -91,6 +94,40 @@ class Repository private constructor(context: Context) {
         private val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE Note ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `PinnedText` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `noteId` INTEGER NOT NULL,
+                        `text` TEXT NOT NULL,
+                        `sortOrder` INTEGER NOT NULL,
+                        `isCollapsed` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `lastModified` INTEGER NOT NULL,
+                        FOREIGN KEY(`noteId`) REFERENCES `Note`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_PinnedText_noteId` ON `PinnedText` (`noteId`)"
+                )
+            }
+        }
+
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE PinnedText ADD COLUMN sourceContent TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE PinnedText ADD COLUMN sourceStart INTEGER NOT NULL DEFAULT 0")
             }
         }
 

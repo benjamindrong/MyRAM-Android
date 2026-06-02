@@ -2,6 +2,7 @@ package com.apexcoretechs.myram.export
 
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
+import com.apexcoretechs.myram.data.PinnedText
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -17,6 +18,7 @@ object NoteExporter {
     fun exportNotes(
         notes: List<Note>,
         attachmentsByNoteId: Map<Int, List<NotePhotoAttachment>>,
+        pinnedTextByNoteId: Map<Int, List<PinnedText>> = emptyMap(),
         folderPathProvider: (Note) -> List<String>,
         exportDirectory: File,
         nowMillis: Long = System.currentTimeMillis()
@@ -39,6 +41,7 @@ object NoteExporter {
             exportedAtMillis = nowMillis,
             folderPathProvider = folderPathProvider,
             attachmentsByNoteId = attachmentsByNoteId,
+            pinnedTextByNoteId = pinnedTextByNoteId,
             attachmentsDirectory = attachmentsDirectory,
             exportedFiles = exportedFiles
         )
@@ -57,6 +60,7 @@ object NoteExporter {
         exportedAtMillis: Long,
         folderPathProvider: (Note) -> List<String>,
         attachmentsByNoteId: Map<Int, List<NotePhotoAttachment>>,
+        pinnedTextByNoteId: Map<Int, List<PinnedText>>,
         attachmentsDirectory: File,
         exportedFiles: MutableList<File>
     ): String {
@@ -93,6 +97,21 @@ object NoteExporter {
             }.joinToString(separator = ",\n")
 
             val folderPathJson = folderPath.joinToString(separator = ",") { "\"${jsonString(it)}\"" }
+            val pinnedTextJson = pinnedTextByNoteId[note.id].orEmpty()
+                .sortedWith(compareBy<PinnedText> { it.sortOrder }.thenBy { it.createdAt })
+                .joinToString(separator = ",\n") { pinnedText ->
+                    """
+                    {
+                      "id": ${pinnedText.id},
+                      "text": "${jsonString(pinnedText.text)}",
+                      "sourceContent": "${jsonString(pinnedText.sourceContent)}",
+                      "sourceStart": ${pinnedText.sourceStart},
+                      "sortOrder": ${pinnedText.sortOrder},
+                      "createdAt": ${pinnedText.createdAt},
+                      "lastModified": ${pinnedText.lastModified}
+                    }
+                    """.trimIndent()
+                }
             """
             {
               "id": ${note.id},
@@ -101,6 +120,7 @@ object NoteExporter {
               "createdAt": ${note.createdAt},
               "lastModified": ${note.lastModified},
               "folderPath": [$folderPathJson],
+              "pinnedText": [${if (pinnedTextJson.isNotBlank()) "\n$pinnedTextJson\n  " else ""}],
               "attachments": [${if (attachmentJson.isNotBlank()) "\n$attachmentJson\n  " else ""}]
             }
             """.trimIndent()

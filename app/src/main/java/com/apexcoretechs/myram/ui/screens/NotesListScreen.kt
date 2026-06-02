@@ -23,7 +23,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CreateNewFolder
@@ -45,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.apexcoretechs.myram.data.Folder
 import com.apexcoretechs.myram.data.Note
+import com.apexcoretechs.myram.data.PinnedText
 import com.apexcoretechs.myram.ui.components.ChromeActionBar
 import com.apexcoretechs.myram.ui.components.computeTopBarLayout
 import com.apexcoretechs.myram.ui.NotesViewModel
@@ -89,6 +90,7 @@ fun NotesListScreen(
     val topBarIconSize = 24.dp
     val hintIconSize = 16.dp
     val notes by vm.visibleNotes.collectAsState()
+    val pinnedTextByNoteId by vm.pinnedTextByNoteId.collectAsState()
     val visibleFolders by vm.visibleFolders.collectAsState()
     val folderActiveNoteCounts by vm.folderActiveNoteCounts.collectAsState()
     val allFolders by vm.allFolders.collectAsState()
@@ -101,6 +103,7 @@ fun NotesListScreen(
     val haptic = LocalHapticFeedback.current
 
     var actionsMenuExpanded by remember { mutableStateOf(false) }
+    var historyMenuExpanded by remember { mutableStateOf(false) }
     var showingRecentlyDeleted by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(false) }
     var selectedNoteIds by remember { mutableStateOf(setOf<Int>()) }
@@ -498,12 +501,7 @@ fun NotesListScreen(
 
     val topBarActionSpecs = remember(canUndoActions, canRedoActions) {
         listOf(
-            ListTopBarActionSpec("undo", Icons.AutoMirrored.Filled.Undo, enabled = canUndoActions) {
-                vm.undoLastAction()
-            },
-            ListTopBarActionSpec("redo", Icons.AutoMirrored.Filled.Redo, enabled = canRedoActions) {
-                vm.redoLastAction()
-            },
+            ListTopBarActionSpec("history", Icons.AutoMirrored.Filled.Undo, enabled = canUndoActions || canRedoActions) {},
             ListTopBarActionSpec("new-note", Icons.Filled.Edit, enabled = true) {
                 vm.createNote { created -> onNoteSelected(created) }
             },
@@ -660,21 +658,80 @@ fun NotesListScreen(
                 } else if (!showingRecentlyDeleted) {
                     val visiblePromotable = (layout.visibleActionCount - 1).coerceAtLeast(0)
                     topBarActionSpecs.take(visiblePromotable).forEach { spec ->
-                        IconButton(
-                            onClick = spec.onClick,
-                            enabled = spec.enabled,
-                            modifier = Modifier.size(topBarControlSize)
-                        ) {
-                            Icon(
-                                spec.icon,
-                                contentDescription = spec.id,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(topBarIconSize)
-                            )
+                        if (spec.id == "history") {
+                            Box {
+                                IconButton(
+                                    onClick = { historyMenuExpanded = true },
+                                    enabled = spec.enabled,
+                                    modifier = Modifier.size(topBarControlSize)
+                                ) {
+                                    Icon(
+                                        spec.icon,
+                                        contentDescription = spec.id,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(topBarIconSize)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = historyMenuExpanded,
+                                    onDismissRequest = { historyMenuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Undo") },
+                                        enabled = canUndoActions,
+                                        onClick = {
+                                            historyMenuExpanded = false
+                                            vm.undoLastAction()
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Redo") },
+                                        enabled = canRedoActions,
+                                        onClick = {
+                                            historyMenuExpanded = false
+                                            vm.redoLastAction()
+                                        }
+                                    )
+                                }
+                            }
+                        } else {
+                            IconButton(
+                                onClick = spec.onClick,
+                                enabled = spec.enabled,
+                                modifier = Modifier.size(topBarControlSize)
+                            ) {
+                                Icon(
+                                    spec.icon,
+                                    contentDescription = spec.id,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(topBarIconSize)
+                                )
+                            }
                         }
                     }
 
                     Box {
+                        DropdownMenu(
+                            expanded = historyMenuExpanded && topBarActionSpecs.take(visiblePromotable).none { it.id == "history" },
+                            onDismissRequest = { historyMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Undo") },
+                                enabled = canUndoActions,
+                                onClick = {
+                                    historyMenuExpanded = false
+                                    vm.undoLastAction()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Redo") },
+                                enabled = canRedoActions,
+                                onClick = {
+                                    historyMenuExpanded = false
+                                    vm.redoLastAction()
+                                }
+                            )
+                        }
                         IconButton(
                             onClick = { actionsMenuExpanded = true },
                             modifier = Modifier.size(topBarControlSize)
@@ -695,7 +752,11 @@ fun NotesListScreen(
                                     text = { Text(spec.menuLabel) },
                                     onClick = {
                                         actionsMenuExpanded = false
-                                        if (spec.enabled) spec.onClick()
+                                        if (spec.id == "history") {
+                                            historyMenuExpanded = true
+                                        } else if (spec.enabled) {
+                                            spec.onClick()
+                                        }
                                     }
                                 )
                             }
@@ -788,6 +849,7 @@ fun NotesListScreen(
                     items(visibleNotes, key = { "note-${it.id}" }) { note ->
                         NoteListRow(
                             note = note,
+                            pinnedTextItems = pinnedTextByNoteId[note.id].orEmpty(),
                             showingRecentlyDeleted = showingRecentlyDeleted,
                             selectionMode = selectionMode,
                             selected = selectedNoteIds.contains(note.id),
@@ -831,6 +893,7 @@ fun NotesListScreen(
     previewedNote?.let { note ->
         NotePreviewDialog(
             note = note,
+            pinnedTextItems = pinnedTextByNoteId[note.id].orEmpty(),
             onDismiss = { previewedNote = null },
             onTogglePinned = {
                 vm.setNotePinned(note, !note.isPinned)
@@ -921,6 +984,7 @@ private fun FolderListRow(
 @Composable
 private fun NoteListRow(
     note: Note,
+    pinnedTextItems: List<PinnedText>,
     showingRecentlyDeleted: Boolean,
     selectionMode: Boolean,
     selected: Boolean,
@@ -986,6 +1050,17 @@ private fun NoteListRow(
                     }
                 }
 
+                pinnedTextPreviewLine(pinnedTextItems)?.let { preview ->
+                    Text(
+                        text = preview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("note-row-pinned-text")
+                    )
+                }
+
                 Text(
                     plainTextFromStoredContent(note.content).take(120),
                     style = MaterialTheme.typography.bodyMedium,
@@ -1013,6 +1088,7 @@ private fun NoteListRow(
 @Composable
 private fun NotePreviewDialog(
     note: Note,
+    pinnedTextItems: List<PinnedText>,
     onDismiss: () -> Unit,
     onTogglePinned: () -> Unit,
     onMove: () -> Unit,
@@ -1038,6 +1114,22 @@ private fun NotePreviewDialog(
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
+                pinnedTextPreviewLine(pinnedTextItems)?.let { preview ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = preview,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -1076,6 +1168,17 @@ private fun NotePreviewDialog(
     }
 }
 
+private fun pinnedTextPreviewLine(pinnedTextItems: List<PinnedText>): String? {
+    return pinnedTextItems
+        .sortedWith(compareBy<PinnedText> { it.sortOrder }.thenBy { it.createdAt })
+        .firstOrNull()
+        ?.text
+        ?.lineSequence()
+        ?.firstOrNull()
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+}
+
 private data class ListTopBarActionSpec(
     val id: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -1084,8 +1187,7 @@ private data class ListTopBarActionSpec(
 ) {
     val menuLabel: String
         get() = when (id) {
-            "undo" -> "Undo"
-            "redo" -> "Redo"
+            "history" -> "History"
             "new-note" -> "New note"
             "new-folder" -> "New folder"
             "recently-deleted" -> "Recently Deleted"

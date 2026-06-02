@@ -158,6 +158,21 @@ fun applyTextColor(
     }
 }
 
+fun clearTextColor(
+    editable: Editable,
+    selectionStart: Int,
+    selectionEnd: Int
+) {
+    val (start, end) = normalizeRange(selectionStart, selectionEnd, editable.length)
+    if (start == end) {
+        removeCursorSpan(editable, start, ForegroundColorSpan::class.java)
+    } else {
+        removeSpanFromRange(editable, start, end, ForegroundColorSpan::class.java) {
+            ForegroundColorSpan(it.foregroundColor)
+        }
+    }
+}
+
 fun applyFontSize(
     editable: Editable,
     selectionStart: Int,

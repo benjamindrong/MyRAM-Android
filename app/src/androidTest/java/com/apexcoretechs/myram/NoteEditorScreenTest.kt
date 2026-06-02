@@ -56,7 +56,7 @@ class NoteEditorScreenTest {
         )
         composeRule.onNodeWithTag("edit-note-title").assertIsDisplayed()
         assertTrue(
-            composeRule.onAllNodesWithContentDescription("Redo", useUnmergedTree = true)
+            composeRule.onAllNodesWithContentDescription("History", useUnmergedTree = true)
                 .fetchSemanticsNodes().isNotEmpty()
         )
         assertTrue(

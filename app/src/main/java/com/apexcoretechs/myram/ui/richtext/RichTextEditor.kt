@@ -3,8 +3,13 @@ package com.apexcoretechs.myram.ui.richtext
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.text.Editable
 import android.text.InputType
+import android.text.NoCopySpan
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.ActionMode
@@ -59,6 +64,12 @@ internal class RichTextEditorActions(
         }
     }
 
+    fun clearColor() {
+        editorProvider()?.withEditable { editable, start, end ->
+            clearTextColor(editable, start, end)
+        }
+    }
+
     fun applyFontSize(fontSizeSp: Int) {
         editorProvider()?.withEditable { editable, start, end ->
             applyFontSize(editable, start, end, fontSizeSp)
@@ -89,7 +100,25 @@ internal class RichTextEditorActions(
     fun toggleSelectAll() {
         editorProvider()?.toggleSelectAll()
     }
+
+    fun pinSelection(): PinnedEditorSelection? {
+        return editorProvider()?.pinSelection()
+    }
+
+    fun insertStoredContent(storedContent: String, preferredOffset: Int) {
+        editorProvider()?.insertStoredContent(storedContent, preferredOffset)
+    }
+
+    fun appendStoredContentOnNewLine(storedContent: String) {
+        editorProvider()?.appendStoredContentOnNewLine(storedContent)
+    }
 }
+
+internal data class PinnedEditorSelection(
+    val text: String,
+    val sourceContent: String,
+    val sourceStart: Int
+)
 
 @Composable
 internal fun RichTextEditor(
@@ -114,6 +143,7 @@ internal fun RichTextEditor(
             FormattingEditText(context).apply {
                 setTextColor(contentTextColor.toArgb())
                 setHintTextColor(contentTextColor.copy(alpha = 0.45f).toArgb())
+                applySelectionColors(contentTextColor)
                 hint = placeholderText
                 setText(decodeRichTextContent(storedContent), TextView.BufferType.EDITABLE)
                 moveCursorToEnd()
@@ -131,6 +161,9 @@ internal fun RichTextEditor(
             if (currentEditor !== editText) {
                 currentEditor = editText
             }
+            editText.setTextColor(contentTextColor.toArgb())
+            editText.setHintTextColor(contentTextColor.copy(alpha = 0.45f).toArgb())
+            editText.applySelectionColors(contentTextColor)
             val currentEncoded = encodeRichTextContent(editText.text ?: "")
             if (currentEncoded != storedContent) {
                 editText.replaceContent(storedContent)
@@ -152,6 +185,9 @@ internal interface RichTextEditorBinding {
     fun pasteClipboard()
     fun toggleChecklistItem()
     fun toggleSelectAll()
+    fun pinSelection(): PinnedEditorSelection?
+    fun insertStoredContent(storedContent: String, preferredOffset: Int)
+    fun appendStoredContentOnNewLine(storedContent: String)
 }
 
 private class FormattingEditText(context: Context) : AppCompatEditText(context), RichTextEditorBinding {
@@ -252,9 +288,18 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
     }
 
     fun replaceContent(storedContent: String) {
+        val currentStart = selectionStart
+        val currentEnd = selectionEnd
         suppressCallbacks = true
         setText(decodeRichTextContent(storedContent), BufferType.EDITABLE)
-        moveCursorToEnd()
+        val length = text?.length ?: 0
+        val safeStart = currentStart.coerceIn(0, length)
+        val safeEnd = currentEnd.coerceIn(0, length)
+        if (safeStart == safeEnd) {
+            setSelection(safeStart)
+        } else {
+            setSelection(safeStart, safeEnd)
+        }
         suppressCallbacks = false
     }
 
@@ -274,6 +319,17 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
             paddingRight,
             bottomPaddingPx
         )
+    }
+
+    fun applySelectionColors(contentTextColor: Color) {
+        val cursorColor = contentTextColor.toArgb()
+        highlightColor = contentTextColor.copy(alpha = 0.24f).toArgb()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            textCursorDrawable = GradientDrawable().apply {
+                setColor(cursorColor)
+                setSize(2, lineHeight.coerceAtLeast(24))
+            }
+        }
     }
 
     override fun withEditable(action: (Editable, Int, Int) -> Unit) {
@@ -356,6 +412,103 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
                 setSelection(target.start, target.end)
             }
             emitFormatState()
+        }
+    }
+
+    override fun pinSelection(): PinnedEditorSelection? {
+        val editable = text ?: return null
+        val start = minOf(selectionStart, selectionEnd).coerceIn(0, editable.length)
+        val end = maxOf(selectionStart, selectionEnd).coerceIn(0, editable.length)
+        if (start == end) return null
+
+        val selected = SpannableStringBuilder(editable.subSequence(start, end))
+        val plainText = selected.toString()
+        if (plainText.trim().isEmpty()) return null
+        val sourceContent = encodeRichTextContent(selected)
+
+        suppressCallbacks = true
+        editable.delete(start, end)
+        suppressCallbacks = false
+        setSelection(start.coerceAtMost(editable.length))
+        publishChanges()
+
+        return PinnedEditorSelection(
+            text = plainText,
+            sourceContent = sourceContent,
+            sourceStart = start
+        )
+    }
+
+    override fun insertStoredContent(storedContent: String, preferredOffset: Int) {
+        val editable = text ?: return
+        val decoded = decodeRichTextContent(storedContent)
+        if (decoded.isEmpty()) return
+
+        val start = preferredOffset.coerceIn(0, editable.length)
+
+        suppressCallbacks = true
+        insertDecodedContent(editable, start, prefix = "", decoded = decoded)
+        suppressCallbacks = false
+        setSelection((start + decoded.length).coerceAtMost(editable.length))
+        publishChanges()
+    }
+
+    override fun appendStoredContentOnNewLine(storedContent: String) {
+        val editable = text ?: return
+        val decoded = decodeRichTextContent(storedContent)
+        if (decoded.isEmpty()) return
+
+        val prefix = if (editable.isNotEmpty()) "\n" else ""
+        val start = editable.length
+        suppressCallbacks = true
+        insertDecodedContent(editable, start, prefix = prefix, decoded = decoded)
+        suppressCallbacks = false
+        setSelection((start + prefix.length + decoded.length).coerceAtMost(editable.length))
+        publishChanges()
+    }
+
+    private fun insertDecodedContent(
+        editable: Editable,
+        start: Int,
+        prefix: String,
+        decoded: Spanned
+    ) {
+        val contentStart = start + prefix.length
+        val contentEnd = contentStart + decoded.length
+        editable.insert(start, prefix + decoded.toString())
+        trimInheritedSpans(editable, start, contentEnd)
+        copySourceSpans(decoded, editable, contentStart)
+    }
+
+    private fun trimInheritedSpans(editable: Editable, start: Int, end: Int) {
+        editable.getSpans(start, end, Any::class.java).forEach { span ->
+            if (span is NoCopySpan) return@forEach
+            val spanStart = editable.getSpanStart(span)
+            val spanEnd = editable.getSpanEnd(span)
+            val flags = editable.getSpanFlags(span)
+            if (spanStart < 0 || spanEnd < 0) return@forEach
+            if (spanStart >= start && spanEnd <= end) {
+                editable.removeSpan(span)
+            } else if (spanStart < start && spanEnd > start) {
+                editable.setSpan(span, spanStart, start, flags)
+            } else if (spanStart < end && spanEnd > end) {
+                editable.setSpan(span, end, spanEnd, flags)
+            }
+        }
+    }
+
+    private fun copySourceSpans(source: Spanned, editable: Editable, destinationStart: Int) {
+        source.getSpans(0, source.length, Any::class.java).forEach { span ->
+            if (span is NoCopySpan) return@forEach
+            val spanStart = source.getSpanStart(span)
+            val spanEnd = source.getSpanEnd(span)
+            if (spanStart < 0 || spanEnd <= spanStart) return@forEach
+            editable.setSpan(
+                span,
+                destinationStart + spanStart,
+                destinationStart + spanEnd,
+                source.getSpanFlags(span)
+            )
         }
     }
 

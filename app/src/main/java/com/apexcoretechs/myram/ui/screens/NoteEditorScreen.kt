@@ -7,6 +7,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
@@ -28,9 +30,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.ContentCopy
@@ -45,6 +49,7 @@ import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.StrikethroughS
@@ -66,6 +71,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,6 +91,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -94,6 +101,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewModelScope
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
+import com.apexcoretechs.myram.data.PinnedText
 import com.apexcoretechs.myram.ui.components.ChromeActionBar
 import com.apexcoretechs.myram.ui.components.computeTopBarLayout
 import com.apexcoretechs.myram.ui.NotesViewModel
@@ -260,15 +268,12 @@ private fun RichTextActionBars(
     keyboardVisible: Boolean,
     onToggleKeyboard: () -> Unit,
     onSetFontSize: (Int) -> Unit,
+    onPinSelection: () -> Unit,
     chromeStyle: EditorChromeStyle,
     modifier: Modifier = Modifier
 ) {
     var sizeMenuExpanded by remember { mutableStateOf(false) }
-    val background = if (chromeStyle == EditorChromeStyle.ChromeAccent) {
-        Color(0xFF5D6168).copy(alpha = 0.88f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
-    }
+    var historyMenuExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier,
@@ -334,6 +339,22 @@ private fun RichTextActionBars(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Surface(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { actions?.clearColor() },
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        tonalElevation = if (formatState.textColor == MaterialTheme.colorScheme.onSurface.toArgb()) 4.dp else 0.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "A",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.surface
+                            )
+                        }
+                    }
                     editorColorSwatches.forEach { swatch ->
                         val selected = formatState.textColor == swatch.toArgb()
                         Surface(
@@ -349,13 +370,9 @@ private fun RichTextActionBars(
             }
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ChromeActionBar(
+            style = chromeStyle,
             modifier = Modifier
-                .clip(RoundedCornerShape(100))
-                .background(background)
-                .padding(horizontal = 6.dp, vertical = 4.dp)
                 .testTag("keyboard-control-bar")
         ) {
             ToggleFormatIcon(
@@ -364,25 +381,48 @@ private fun RichTextActionBars(
                 selected = false,
                 onClick = onToggleKeyboard
             )
-            ToggleFormatIcon(
-                icon = Icons.AutoMirrored.Filled.Undo,
-                label = "Undo",
-                selected = false,
-                enabled = canUndo,
-                onClick = onUndo
-            )
-            ToggleFormatIcon(
-                icon = Icons.AutoMirrored.Filled.Redo,
-                label = "Redo",
-                selected = false,
-                enabled = canRedo,
-                onClick = onRedo
-            )
+            Box {
+                ToggleFormatIcon(
+                    icon = Icons.AutoMirrored.Filled.Undo,
+                    label = "History",
+                    selected = false,
+                    enabled = canUndo || canRedo,
+                    onClick = { historyMenuExpanded = true }
+                )
+                DropdownMenu(
+                    expanded = historyMenuExpanded,
+                    onDismissRequest = { historyMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Undo") },
+                        enabled = canUndo,
+                        onClick = {
+                            historyMenuExpanded = false
+                            onUndo()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Redo") },
+                        enabled = canRedo,
+                        onClick = {
+                            historyMenuExpanded = false
+                            onRedo()
+                        }
+                    )
+                }
+            }
             ToggleFormatIcon(icon = Icons.Filled.ContentCut, label = "Cut", selected = false, onClick = { actions?.cutSelection() })
             ToggleFormatIcon(icon = Icons.Filled.ContentCopy, label = "Copy", selected = false, onClick = { actions?.copySelection() })
             ToggleFormatIcon(icon = Icons.Filled.ContentPaste, label = "Paste", selected = false, onClick = { actions?.pasteClipboard() })
             ToggleFormatIcon(icon = Icons.Filled.SelectAll, label = "Select all", selected = false, onClick = { actions?.toggleSelectAll() })
             ToggleFormatIcon(icon = Icons.Filled.CheckBox, label = "Checklist", selected = false, onClick = { actions?.toggleChecklistItem() })
+            ToggleFormatIcon(
+                icon = Icons.Filled.PushPin,
+                label = "Pin",
+                selected = false,
+                onClick = onPinSelection,
+                modifier = Modifier.testTag("keyboard-control-pin")
+            )
             ToggleFormatIcon(
                 icon = if (showingFormattingControls) Icons.Filled.Close else Icons.Filled.MoreVert,
                 label = "Formatting menu",
@@ -441,6 +481,7 @@ fun NoteEditorScreen(
     var showingCreateFolderPrompt by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     var areAttachmentsExpanded by remember(note?.id) { mutableStateOf(false) }
+    var arePinnedExpanded by remember(note?.id) { mutableStateOf(true) }
     var expandedAttachmentId by remember(note?.id) { mutableStateOf<Long?>(null) }
     var previousAttachmentCount by remember(note?.id) { mutableIntStateOf(0) }
     var showingTitleEditor by remember(note?.id) { mutableStateOf(false) }
@@ -467,6 +508,7 @@ fun NoteEditorScreen(
     val editorFocusRequester = remember { FocusRequester() }
 
     val attachments by vm.noteAttachments(note?.id).collectAsState(initial = emptyList())
+    val pinnedTextItems by vm.pinnedText(note?.id).collectAsState(initial = emptyList())
     val canUndoActions by vm.canUndoActions.collectAsState()
     val suggestionLabels by vm.noteSuggestionLabels.collectAsState()
     val expandedAttachment = remember(attachments, expandedAttachmentId) {
@@ -608,6 +650,10 @@ fun NoteEditorScreen(
         }
     }
 
+    LaunchedEffect(note?.id, pinnedTextItems.size) {
+        arePinnedExpanded = pinnedTextItems.size <= 3
+    }
+
     LaunchedEffect(note?.id, title.text, plainContent) {
         val current = note ?: return@LaunchedEffect
         delay(400)
@@ -726,7 +772,7 @@ fun NoteEditorScreen(
             val promotableActionCount = editorTopActions.size
             val layout = computeTopBarLayout(
                 totalWidthPx = totalWidthPx,
-                leadingWidthPx = 0f,
+                leadingWidthPx = iconWidthPx,
                 titleWidthPx = titleWidthPx,
                 actionCount = promotableActionCount + 1,
                 actionWidthPx = iconWidthPx,
@@ -745,6 +791,20 @@ fun NoteEditorScreen(
                 ) {}
 
                 ChromeActionBar(style = editorChromeStyle, modifier = Modifier.fillMaxWidth()) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(topBarControlSize)
+                            .testTag("close-note-editor")
+                    ) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Close note editor",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(topBarIconSize)
+                        )
+                    }
+
                     TextButton(
                         onClick = {
                             titleDraft = title.text
@@ -862,6 +922,24 @@ fun NoteEditorScreen(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
+                PinnedTextSection(
+                    pinnedTextItems = pinnedTextItems,
+                    expanded = arePinnedExpanded,
+                    onExpandedChanged = { arePinnedExpanded = it },
+                    onAdd = {
+                        note?.let { current ->
+                            arePinnedExpanded = true
+                            vm.addPinnedText(current)
+                        }
+                    },
+                    onUpdate = vm::updatePinnedText,
+                    onMove = vm::movePinnedText,
+                    onUnpin = { pinnedText ->
+                        editorActions?.appendStoredContentOnNewLine(pinnedText.sourceContent)
+                        vm.unpinText(pinnedText)
+                    }
+                )
+
                 RichTextEditor(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -908,6 +986,20 @@ fun NoteEditorScreen(
                     },
                     onSetFontSize = { size ->
                         editorActions?.applyFontSize(size)
+                    },
+                    onPinSelection = {
+                        val selection = editorActions?.pinSelection()
+                        if (selection != null) {
+                            note?.let { current ->
+                                arePinnedExpanded = true
+                                vm.addPinnedText(
+                                    note = current,
+                                    text = selection.text,
+                                    sourceContent = selection.sourceContent,
+                                    sourceStart = selection.sourceStart
+                                )
+                            }
+                        }
                     },
                     chromeStyle = editorChromeStyle,
                     modifier = Modifier
@@ -1005,6 +1097,294 @@ fun NoteEditorScreen(
             onDismiss = { expandedAttachmentId = null }
         )
     }
+}
+
+@Composable
+private fun PinnedTextSection(
+    pinnedTextItems: List<PinnedText>,
+    expanded: Boolean,
+    onExpandedChanged: (Boolean) -> Unit,
+    onAdd: () -> Unit,
+    onUpdate: (PinnedText, String) -> Unit,
+    onMove: (PinnedText, Int) -> Unit,
+    onUnpin: (PinnedText) -> Unit
+) {
+    var activeDragId by remember { mutableStateOf<Long?>(null) }
+    var activeDragOffsetY by remember { mutableFloatStateOf(0f) }
+    var pendingInsertionIndex by remember { mutableStateOf<Int?>(null) }
+
+    if (pinnedTextItems.isEmpty()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(
+                onClick = onAdd,
+                modifier = Modifier.testTag("pinned-text-add")
+            ) {
+                Text("Pinned (0)")
+            }
+        }
+        return
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp)
+            .testTag("pinned-text-section"),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { onExpandedChanged(!expanded) },
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("pinned-text-toggle")
+                ) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "Pinned",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Text(
+                    text = "Pinned (${pinnedTextItems.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onAdd) {
+                    Text("Add")
+                }
+            }
+
+            if (expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (pendingInsertionIndex == 0) {
+                        ReorderInsertionIndicator()
+                    }
+                    pinnedTextItems.forEachIndexed { index, pinnedText ->
+                        PinnedTextRow(
+                            pinnedText = pinnedText,
+                            index = index,
+                            count = pinnedTextItems.size,
+                            activeDragId = activeDragId,
+                            activeDragOffsetY = activeDragOffsetY,
+                            onUpdate = onUpdate,
+                            onMove = { item, targetIndex ->
+                                if (targetIndex != index && targetIndex != index + 1) {
+                                    onMove(item, targetIndex)
+                                }
+                                activeDragId = null
+                                activeDragOffsetY = 0f
+                                pendingInsertionIndex = null
+                            },
+                            onDragChanged = { item, offsetY ->
+                                activeDragId = item.id
+                                activeDragOffsetY = offsetY
+                                pendingInsertionIndex = reorderInsertionIndex(
+                                    currentIndex = index,
+                                    count = pinnedTextItems.size,
+                                    offsetY = offsetY
+                                )
+                            },
+                            onDragCancelled = {
+                                activeDragId = null
+                                activeDragOffsetY = 0f
+                                pendingInsertionIndex = null
+                            },
+                            onUnpin = onUnpin
+                        )
+                        if (pendingInsertionIndex == index + 1) {
+                            ReorderInsertionIndicator()
+                        }
+                    }
+                }
+            } else {
+                val preview = pinnedTextItems.firstOrNull()?.text
+                    ?.lineSequence()
+                    ?.firstOrNull()
+                    ?.ifBlank { "Pinned" }
+                    ?: "Pinned"
+                Text(
+                    text = preview,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .padding(start = 8.dp, end = 8.dp, bottom = 6.dp)
+                        .testTag("pinned-text-collapsed-preview")
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinnedTextRow(
+    pinnedText: PinnedText,
+    index: Int,
+    count: Int,
+    activeDragId: Long?,
+    activeDragOffsetY: Float,
+    onUpdate: (PinnedText, String) -> Unit,
+    onMove: (PinnedText, Int) -> Unit,
+    onDragChanged: (PinnedText, Float) -> Unit,
+    onDragCancelled: () -> Unit,
+    onUnpin: (PinnedText) -> Unit
+) {
+    var draft by remember(pinnedText.id, pinnedText.text) { mutableStateOf(pinnedText.text) }
+    var editing by remember(pinnedText.id) { mutableStateOf(false) }
+    var menuExpanded by remember(pinnedText.id) { mutableStateOf(false) }
+    var dragOffsetY by remember(pinnedText.id) { mutableFloatStateOf(0f) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                translationY = if (activeDragId == pinnedText.id) activeDragOffsetY else 0f
+            }
+            .combinedClickable(
+                onClick = { editing = true },
+                onLongClick = { menuExpanded = true }
+            )
+            .testTag("pinned-text-row"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        ReorderGripDots(
+            modifier = Modifier
+                .size(width = 24.dp, height = 30.dp)
+                .pointerInput(pinnedText.id, index, count) {
+                    var totalDragY = 0f
+                    detectDragGestures(
+                        onDragEnd = {
+                            val targetIndex = reorderInsertionIndex(
+                                currentIndex = index,
+                                count = count,
+                                offsetY = totalDragY
+                            ) ?: index
+                            onMove(pinnedText, targetIndex)
+                            dragOffsetY = 0f
+                            totalDragY = 0f
+                        },
+                        onDragCancel = {
+                            dragOffsetY = 0f
+                            totalDragY = 0f
+                            onDragCancelled()
+                        },
+                        onDrag = { _, dragAmount ->
+                            dragOffsetY += dragAmount.y
+                            totalDragY += dragAmount.y
+                            onDragChanged(pinnedText, totalDragY)
+                        }
+                    )
+                }
+                .testTag("pinned-text-drag-handle")
+        )
+
+        if (editing) {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = {
+                    draft = it
+                    onUpdate(pinnedText, it)
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("pinned-text-field"),
+                maxLines = 4,
+                placeholder = { Text("Pinned") }
+            )
+        } else {
+            Text(
+                text = pinnedText.text.ifBlank { "Pinned" },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 8.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (pinnedText.text.isBlank()) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+            Icon(
+                Icons.Filled.Edit,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Box {
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Unpin") },
+                    onClick = {
+                        menuExpanded = false
+                        onUnpin(pinnedText)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReorderGripDots(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(2) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                repeat(3) {
+                    Surface(
+                        modifier = Modifier.size(4.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                    ) {}
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReorderInsertionIndicator() {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(3.dp),
+        shape = RoundedCornerShape(100),
+        color = MaterialTheme.colorScheme.primary
+    ) {}
+}
+
+private fun reorderInsertionIndex(currentIndex: Int, count: Int, offsetY: Float): Int? {
+    val rowStepPx = 56f
+    val steps = (offsetY / rowStepPx).toInt()
+    val targetIndex = when {
+        steps > 0 -> currentIndex + steps + 1
+        steps < 0 -> currentIndex + steps
+        else -> return null
+    }.coerceIn(0, count)
+    return targetIndex
 }
 
 private fun suggestionLabelDisplayName(label: String): String {
