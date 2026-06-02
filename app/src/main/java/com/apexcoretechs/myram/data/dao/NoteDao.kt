@@ -3,6 +3,7 @@ package com.apexcoretechs.myram.data.dao
 import androidx.room.*
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
+import com.apexcoretechs.myram.data.PinnedText
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -28,6 +29,15 @@ interface NoteDao {
     @Query("SELECT * FROM NotePhotoAttachment WHERE noteId IN (:noteIds) ORDER BY createdAt ASC")
     suspend fun getAttachmentsForNotes(noteIds: List<Int>): List<NotePhotoAttachment>
 
+    @Query("SELECT * FROM PinnedText WHERE noteId = :noteId ORDER BY sortOrder ASC, createdAt ASC")
+    fun getPinnedTextForNote(noteId: Int): Flow<List<PinnedText>>
+
+    @Query("SELECT * FROM PinnedText WHERE noteId IN (:noteIds) ORDER BY noteId ASC, sortOrder ASC, createdAt ASC")
+    fun getPinnedTextForNotes(noteIds: List<Int>): Flow<List<PinnedText>>
+
+    @Query("SELECT * FROM PinnedText WHERE noteId IN (:noteIds) ORDER BY noteId ASC, sortOrder ASC, createdAt ASC")
+    suspend fun getPinnedTextForNotesOnce(noteIds: List<Int>): List<PinnedText>
+
     @Query("DELETE FROM Note WHERE deletedAt IS NOT NULL AND deletedAt < :cutoff")
     suspend fun purgeDeletedBefore(cutoff: Long)
 
@@ -48,6 +58,9 @@ interface NoteDao {
     @Insert
     suspend fun insertAttachment(attachment: NotePhotoAttachment): Long
 
+    @Insert
+    suspend fun insertPinnedText(pinnedText: PinnedText): Long
+
     @Update
     suspend fun update(note: Note)
 
@@ -56,4 +69,10 @@ interface NoteDao {
 
     @Delete
     suspend fun deleteAttachment(attachment: NotePhotoAttachment)
+
+    @Update
+    suspend fun updatePinnedText(pinnedText: PinnedText)
+
+    @Delete
+    suspend fun deletePinnedText(pinnedText: PinnedText)
 }

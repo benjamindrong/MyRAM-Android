@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.apexcoretechs.myram.data.Folder
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
+import com.apexcoretechs.myram.data.PinnedText
 import com.apexcoretechs.myram.data.Repository
 import com.apexcoretechs.myram.export.NoteExporter
 import com.apexcoretechs.myram.intelligence.NoteIntelligenceService
@@ -17,6 +18,7 @@ import com.apexcoretechs.myram.ui.richtext.plainTextFromStoredContent
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,11 +26,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class NotesViewModel(app: Application) : AndroidViewModel(app) {
     private val recentlyDeletedRetentionMillis = 7L * 24 * 60 * 60 * 1000
     val repo = Repository.get(getApplication())
@@ -52,6 +57,18 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     val visibleNotes = combine(allActiveNotes, _currentFolderId) { notes, folderId ->
         sortNotesForDisplay(notes.filter { it.folderId == folderId })
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val pinnedTextByNoteId = combine(allActiveNotes, _currentFolderId) { notes, folderId ->
+        notes.filter { it.folderId == folderId }.map { it.id }
+    }.flatMapLatest { noteIds ->
+        if (noteIds.isEmpty()) {
+            flowOf(emptyMap())
+        } else {
+            repo.noteDao.getPinnedTextForNotes(noteIds).map { pinnedText ->
+                pinnedText.sortedPinnedText().groupBy { it.noteId }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyMap())
 
     val folderActiveNoteCounts = combine(allFolders, allActiveNotes) { folders, notes ->
         computeFolderActiveNoteCounts(folders = folders, notes = notes)
@@ -466,6 +483,113 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun pinnedText(noteId: Int?): Flow<List<PinnedText>> {
+        return if (noteId == null || noteId <= 0) {
+            flowOf(emptyList())
+        } else {
+            repo.noteDao.getPinnedTextForNote(noteId)
+        }
+    }
+
+    fun addPinnedText(
+        note: Note,
+        text: String = "",
+        sourceContent: String = "",
+        sourceStart: Int = 0,
+        onCreated: (PinnedText) -> Unit = {}
+    ) = viewModelScope.launch {
+        if (note.deletedAt != null) return@launch
+        val trimmed = text.trim()
+        val existing = repo.noteDao.getPinnedTextForNotesOnce(listOf(note.id))
+        val now = System.currentTimeMillis()
+        val pinnedText = PinnedText(
+            noteId = note.id,
+            text = trimmed,
+            sourceContent = sourceContent.ifBlank { trimmed },
+            sourceStart = sourceStart.coerceAtLeast(0),
+            sortOrder = (existing.maxOfOrNull { it.sortOrder } ?: -1) + 1,
+            createdAt = now,
+            lastModified = now
+        )
+        val id = repo.noteDao.insertPinnedText(pinnedText)
+        touchNote(note.id, now)
+        onCreated(pinnedText.copy(id = id))
+    }
+
+    fun updatePinnedText(pinnedText: PinnedText, text: String) = viewModelScope.launch {
+        val trimmed = text.trim()
+        if (pinnedText.text == trimmed) return@launch
+        val now = System.currentTimeMillis()
+        repo.noteDao.updatePinnedText(
+            pinnedText.copy(
+                text = trimmed,
+                lastModified = now
+            )
+        )
+        touchNote(pinnedText.noteId, now)
+    }
+
+    fun setPinnedTextCollapsed(pinnedText: PinnedText, isCollapsed: Boolean) = viewModelScope.launch {
+        if (pinnedText.isCollapsed == isCollapsed) return@launch
+        val now = System.currentTimeMillis()
+        repo.noteDao.updatePinnedText(
+            pinnedText.copy(
+                isCollapsed = isCollapsed,
+                lastModified = now
+            )
+        )
+        touchNote(pinnedText.noteId, now)
+    }
+
+    fun movePinnedText(pinnedText: PinnedText, toIndex: Int) = viewModelScope.launch {
+        val ordered = repo.noteDao.getPinnedTextForNotesOnce(listOf(pinnedText.noteId))
+            .sortedPinnedText()
+            .toMutableList()
+        val currentIndex = ordered.indexOfFirst { it.id == pinnedText.id }
+        if (currentIndex < 0) return@launch
+        val clampedTarget = toIndex.coerceIn(0, ordered.size)
+        if (clampedTarget == currentIndex || clampedTarget == currentIndex + 1) return@launch
+
+        val moved = ordered.removeAt(currentIndex)
+        val adjustedTarget = if (clampedTarget > currentIndex) clampedTarget - 1 else clampedTarget
+        ordered.add(adjustedTarget, moved)
+
+        val now = System.currentTimeMillis()
+        ordered.forEachIndexed { index, item ->
+            repo.noteDao.updatePinnedText(item.copy(sortOrder = index, lastModified = now))
+        }
+        touchNote(pinnedText.noteId, now)
+    }
+
+    fun unpinText(pinnedText: PinnedText) = viewModelScope.launch {
+        repo.noteDao.deletePinnedText(pinnedText)
+        val now = System.currentTimeMillis()
+        repo.noteDao.getPinnedTextForNotesOnce(listOf(pinnedText.noteId))
+            .sortedPinnedText()
+            .forEachIndexed { index, item ->
+                if (item.sortOrder != index) {
+                    repo.noteDao.updatePinnedText(item.copy(sortOrder = index, lastModified = now))
+                }
+            }
+        touchNote(pinnedText.noteId, now)
+    }
+
+    fun replacePinnedText(note: Note, pinnedText: List<PinnedText>) = viewModelScope.launch {
+        val existing = repo.noteDao.getPinnedTextForNotesOnce(listOf(note.id))
+        existing.forEach { repo.noteDao.deletePinnedText(it) }
+        pinnedText.sortedPinnedText().forEachIndexed { index, item ->
+            repo.noteDao.insertPinnedText(
+                item.copy(
+                    id = 0,
+                    noteId = note.id,
+                    sortOrder = index,
+                    lastModified = System.currentTimeMillis()
+                )
+            )
+        }
+        touchNote(note.id)
+    }
+
     fun addPhotoAttachments(noteId: Int, uris: List<Uri>) = viewModelScope.launch {
         if (noteId <= 0 || uris.isEmpty()) return@launch
         uris.forEach { uri ->
@@ -673,6 +797,8 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
             val noteIds = activeNotes.map { it.id }
             val attachmentsByNoteId = repo.noteDao.getAttachmentsForNotes(noteIds)
                 .groupBy { it.noteId }
+            val pinnedTextByNoteId = repo.noteDao.getPinnedTextForNotesOnce(noteIds)
+                .groupBy { it.noteId }
 
             val foldersById = repo.folderDao.getAll().first().associateBy { it.id }
             val folderPathProvider: (Note) -> List<String> = { note ->
@@ -682,6 +808,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
             val artifact = NoteExporter.exportNotes(
                 notes = activeNotes,
                 attachmentsByNoteId = attachmentsByNoteId,
+                pinnedTextByNoteId = pinnedTextByNoteId,
                 folderPathProvider = folderPathProvider,
                 exportDirectory = exportsDirectory
             )
@@ -711,6 +838,16 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
             cursor = folder.parentFolderId
         }
         return segments.reversed()
+    }
+
+    private suspend fun touchNote(noteId: Int, timestamp: Long = System.currentTimeMillis()) {
+        val latest = repo.noteDao.getByIdIncludingDeleted(noteId) ?: return
+        if (latest.deletedAt != null) return
+        val updated = latest.copy(lastModified = timestamp)
+        repo.noteDao.update(updated)
+        if (_currentNote.value?.id == updated.id) {
+            _currentNote.value = updated
+        }
     }
 }
 
@@ -774,3 +911,7 @@ data class ShareableExport(
     val mimeType: String,
     val files: List<File>
 )
+
+internal fun List<PinnedText>.sortedPinnedText(): List<PinnedText> {
+    return sortedWith(compareBy<PinnedText> { it.sortOrder }.thenBy { it.createdAt })
+}

@@ -2,6 +2,7 @@ package com.apexcoretechs.myram
 
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
+import com.apexcoretechs.myram.data.PinnedText
 import com.apexcoretechs.myram.export.NoteExporter
 import java.io.File
 import java.nio.file.Files
@@ -85,6 +86,40 @@ class NoteExporterTest {
             assertTrue(json.contains("\"mimeType\": \"image/jpeg\""))
             assertTrue(json.contains("\"filename\": \"${attachmentFiles.first().name}\""))
             assertFalse(json.contains("\"body\""))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun exportNotes_includesPinnedTextInOrder() {
+        val directory = makeTempDirectory()
+        try {
+            val note = Note(
+                id = 8,
+                title = "Plan",
+                content = "Body stays here",
+                createdAt = 1_000L,
+                lastModified = 2_000L
+            )
+            val pinned = listOf(
+                PinnedText(id = 2, noteId = 8, text = "Second", sortOrder = 1, createdAt = 11L, lastModified = 12L),
+                PinnedText(id = 1, noteId = 8, text = "First", sortOrder = 0, createdAt = 9L, lastModified = 10L)
+            )
+
+            val artifact = NoteExporter.exportNotes(
+                notes = listOf(note),
+                attachmentsByNoteId = emptyMap(),
+                pinnedTextByNoteId = mapOf(8 to pinned),
+                folderPathProvider = { emptyList() },
+                exportDirectory = directory,
+                nowMillis = 4_000L
+            )
+
+            val json = artifact.files.first { it.extension.lowercase() == "json" }.readText(Charsets.UTF_8)
+            assertTrue(json.contains("\"pinnedText\": ["))
+            assertTrue(json.indexOf("\"text\": \"First\"") < json.indexOf("\"text\": \"Second\""))
+            assertTrue(json.contains("\"content\": \"Body stays here\""))
         } finally {
             directory.deleteRecursively()
         }

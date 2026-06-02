@@ -3,13 +3,13 @@ package com.apexcoretechs.myram
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
-import androidx.test.espresso.Espresso.pressBack
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -89,7 +89,11 @@ class NotesListScreenBehaviorTest {
     }
 
     private fun closeEditor() {
-        pressBack()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("close-note-editor")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("close-note-editor").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithContentDescription("Select notes")
                 .fetchSemanticsNodes().isNotEmpty() ||
