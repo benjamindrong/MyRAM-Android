@@ -510,7 +510,6 @@ fun NoteEditorScreen(
     val attachments by vm.noteAttachments(note?.id).collectAsState(initial = emptyList())
     val pinnedTextItems by vm.pinnedText(note?.id).collectAsState(initial = emptyList())
     val canUndoActions by vm.canUndoActions.collectAsState()
-    val suggestionLabels by vm.noteSuggestionLabels.collectAsState()
     val expandedAttachment = remember(attachments, expandedAttachmentId) {
         attachments.firstOrNull { it.id == expandedAttachmentId }
     }
@@ -1069,36 +1068,6 @@ fun NoteEditorScreen(
                 }
             }
 
-            if (suggestionLabels.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Optional recommendations",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(suggestionLabels) { label ->
-                                Surface(
-                                    shape = RoundedCornerShape(100),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                ) {
-                                    Text(
-                                        text = suggestionLabelDisplayName(label),
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -1396,19 +1365,6 @@ private fun reorderInsertionIndex(currentIndex: Int, count: Int, offsetY: Float)
         else -> return null
     }.coerceIn(0, count)
     return targetIndex
-}
-
-private fun suggestionLabelDisplayName(label: String): String {
-    return when (label) {
-        "possible_task" -> "Possible Task"
-        "possible_event" -> "Possible Event"
-        "reminder_candidate" -> "Reminder Candidate"
-        "idea" -> "Idea"
-        "journal_entry" -> "Journal Entry"
-        "high_revisit_value" -> "High Revisit Value"
-        "merge_candidate" -> "Merge Candidate"
-        else -> label
-    }
 }
 
 private data class EditorSnapshot(
