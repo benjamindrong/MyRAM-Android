@@ -15,6 +15,7 @@ import com.northsignalstudio.myram.data.Repository
 import com.northsignalstudio.myram.export.NoteExporter
 import com.northsignalstudio.myram.intelligence.NoteIntelligenceService
 import com.northsignalstudio.myram.ui.richtext.plainTextFromStoredContent
+import com.northsignalstudio.myram.debug.DebugDemoDataGenerator
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -476,7 +477,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun noteAttachments(noteId: Int?): Flow<List<NotePhotoAttachment>> {
-        return if (noteId == null || noteId <= 0) {
+        return if (noteId == null || noteId == 0) {
             flowOf(emptyList())
         } else {
             repo.noteDao.getAttachmentsForNote(noteId)
@@ -484,7 +485,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pinnedText(noteId: Int?): Flow<List<PinnedText>> {
-        return if (noteId == null || noteId <= 0) {
+        return if (noteId == null || noteId == 0) {
             flowOf(emptyList())
         } else {
             repo.noteDao.getPinnedTextForNote(noteId)
@@ -588,6 +589,22 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
         touchNote(note.id)
+    }
+
+    fun generateDemoNotes() = viewModelScope.launch {
+        val selectedNoteId = _currentNote.value?.id
+        DebugDemoDataGenerator.generateDemoNotes(repo.noteDao)
+        _currentFolderId.value = null
+        if (selectedNoteId in DebugDemoDataGenerator.demoNoteIds) {
+            selectNote(null)
+        }
+    }
+
+    fun clearDemoNotes() = viewModelScope.launch {
+        DebugDemoDataGenerator.clearDemoNotes(repo.noteDao)
+        if (_currentNote.value?.id in DebugDemoDataGenerator.demoNoteIds) {
+            selectNote(null)
+        }
     }
 
     fun addPhotoAttachments(noteId: Int, uris: List<Uri>) = viewModelScope.launch {

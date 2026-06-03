@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://apexcoretechs.com/schemas/note_intelligence_input.schema.v1.json",
+  "$id": "https://northsignalstudio.com/schemas/note_intelligence_input.schema.v1.json",
   "title": "NoteIntelligenceInputV1",
   "type": "object",
   "additionalProperties": false,

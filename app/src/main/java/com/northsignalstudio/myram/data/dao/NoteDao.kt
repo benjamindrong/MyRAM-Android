@@ -38,6 +38,12 @@ interface NoteDao {
     @Query("SELECT * FROM PinnedText WHERE noteId IN (:noteIds) ORDER BY noteId ASC, sortOrder ASC, createdAt ASC")
     suspend fun getPinnedTextForNotesOnce(noteIds: List<Int>): List<PinnedText>
 
+    @Query("DELETE FROM PinnedText WHERE noteId IN (:noteIds)")
+    suspend fun deletePinnedTextForNotes(noteIds: List<Int>)
+
+    @Query("DELETE FROM Note WHERE id IN (:noteIds)")
+    suspend fun deleteNotesById(noteIds: List<Int>)
+
     @Query("DELETE FROM Note WHERE deletedAt IS NOT NULL AND deletedAt < :cutoff")
     suspend fun purgeDeletedBefore(cutoff: Long)
 
@@ -60,6 +66,17 @@ interface NoteDao {
 
     @Insert
     suspend fun insertPinnedText(pinnedText: PinnedText): Long
+
+    @Transaction
+    suspend fun replaceNotesWithPinnedText(notes: List<Note>, pinnedText: List<PinnedText>) {
+        val noteIds = notes.map { it.id }
+        if (noteIds.isEmpty()) return
+
+        deletePinnedTextForNotes(noteIds)
+        deleteNotesById(noteIds)
+        notes.forEach { upsert(it) }
+        pinnedText.forEach { insertPinnedText(it) }
+    }
 
     @Update
     suspend fun update(note: Note)

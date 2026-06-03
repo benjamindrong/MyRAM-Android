@@ -17,8 +17,8 @@
   - `MyRAM-Notes-<timestamp>.json`
   - `MyRAM-Export-<timestamp>.zip`
 - Note intelligence schema domains:
-  - `https://apexcoretechs.com/schemas/note_intelligence_input.schema.v1.json`
-  - `https://apexcoretechs.com/schemas/note_intelligence_output.schema.v1.json`
+  - `https://northsignalstudio.com/schemas/note_intelligence_input.schema.v1.json`
+  - `https://northsignalstudio.com/schemas/note_intelligence_output.schema.v1.json`
 
 ## Values to Decide Before Play Store Submission
 
