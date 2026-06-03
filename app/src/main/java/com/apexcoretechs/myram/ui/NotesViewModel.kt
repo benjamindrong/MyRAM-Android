@@ -12,6 +12,7 @@ import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.NotePhotoAttachment
 import com.apexcoretechs.myram.data.PinnedText
 import com.apexcoretechs.myram.data.Repository
+import com.apexcoretechs.myram.debug.DebugDemoDataGenerator
 import com.apexcoretechs.myram.export.NoteExporter
 import com.apexcoretechs.myram.intelligence.NoteIntelligenceService
 import com.apexcoretechs.myram.ui.richtext.plainTextFromStoredContent
@@ -476,7 +477,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun noteAttachments(noteId: Int?): Flow<List<NotePhotoAttachment>> {
-        return if (noteId == null || noteId <= 0) {
+        return if (noteId == null || noteId == 0) {
             flowOf(emptyList())
         } else {
             repo.noteDao.getAttachmentsForNote(noteId)
@@ -484,7 +485,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pinnedText(noteId: Int?): Flow<List<PinnedText>> {
-        return if (noteId == null || noteId <= 0) {
+        return if (noteId == null || noteId == 0) {
             flowOf(emptyList())
         } else {
             repo.noteDao.getPinnedTextForNote(noteId)
@@ -588,6 +589,22 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
         touchNote(note.id)
+    }
+
+    fun generateDemoNotes() = viewModelScope.launch {
+        val selectedNoteId = _currentNote.value?.id
+        DebugDemoDataGenerator.generateDemoNotes(repo.noteDao)
+        _currentFolderId.value = null
+        if (selectedNoteId in DebugDemoDataGenerator.demoNoteIds) {
+            selectNote(null)
+        }
+    }
+
+    fun clearDemoNotes() = viewModelScope.launch {
+        DebugDemoDataGenerator.clearDemoNotes(repo.noteDao)
+        if (_currentNote.value?.id in DebugDemoDataGenerator.demoNoteIds) {
+            selectNote(null)
+        }
     }
 
     fun addPhotoAttachments(noteId: Int, uris: List<Uri>) = viewModelScope.launch {
