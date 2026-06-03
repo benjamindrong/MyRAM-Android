@@ -1,8 +1,8 @@
-package com.apexcoretechs.myram.debug
+package com.northsignalstudio.myram.debug
 
-import com.apexcoretechs.myram.data.Note
-import com.apexcoretechs.myram.data.PinnedText
-import com.apexcoretechs.myram.data.dao.NoteDao
+import com.northsignalstudio.myram.data.Note
+import com.northsignalstudio.myram.data.PinnedText
+import com.northsignalstudio.myram.data.dao.NoteDao
 import java.time.LocalDate
 import java.time.ZoneId
 

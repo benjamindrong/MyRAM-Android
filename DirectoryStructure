@@ -1,4 +1,4 @@
-com.apexcoretechs.myram/
+com.northsignalstudio.myram/
 ├── data/
 │   ├── dao/
 │   ├── AppDatabase.kt

@@ -1,6 +1,6 @@
-package com.apexcoretechs.myram.debug
+package com.northsignalstudio.myram.debug
 
-import com.apexcoretechs.myram.data.dao.NoteDao
+import com.northsignalstudio.myram.data.dao.NoteDao
 
 object DebugDemoDataGenerator {
     const val isAvailable: Boolean = false

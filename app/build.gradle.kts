@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.apexcoretechs.myram"
+    namespace = "com.northsignalstudio.myram"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.apexcoretechs.myram"
+        applicationId = "com.northsignalstudio.myram"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
