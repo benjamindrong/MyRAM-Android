@@ -531,10 +531,24 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         if (line < 0 || line >= layout.lineCount) return false
         val offset = layout.getOffsetForHorizontal(line, contentX)
         if (offset < 0 || offset >= editable.length) return false
-        if (!isChecklistIconAtOffset(editable.toString(), offset)) return false
+        val iconRange = checklistIconRangeContainingOffset(editable.toString(), offset) ?: return false
+        val iconStartX = layout.getPrimaryHorizontal(iconRange.start)
+        val iconEndX = layout.getPrimaryHorizontal(iconRange.end.coerceAtMost(editable.length))
+        val iconCenterX = (iconStartX + iconEndX) / 2f
+        val lineCenterY = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f
+        val minimumTargetSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            48f,
+            resources.displayMetrics
+        )
+        val targetLeft = iconCenterX - minimumTargetSize / 2f
+        val targetRight = iconCenterX + minimumTargetSize / 2f
+        val targetTop = lineCenterY - minimumTargetSize / 2f
+        val targetBottom = lineCenterY + minimumTargetSize / 2f
+        if (contentX !in targetLeft..targetRight || contentY !in targetTop..targetBottom) return false
 
         suppressCallbacks = true
-        val result = toggleChecklistAtSelection(editable, offset, offset)
+        val result = toggleChecklistAtSelection(editable, iconRange.start, iconRange.start)
         suppressCallbacks = false
         setSelection(result.selectionStart.coerceAtMost(editable.length))
         animateChecklistToggle()

@@ -1,8 +1,14 @@
 package com.northsignalstudio.myram
 
+import android.text.SpannableStringBuilder
+import android.text.style.AbsoluteSizeSpan
 import com.northsignalstudio.myram.ui.richtext.CHECKLIST_CHECKED_PREFIX
+import com.northsignalstudio.myram.ui.richtext.CHECKLIST_ICON_SIZE_SP
 import com.northsignalstudio.myram.ui.richtext.CHECKLIST_UNCHECKED_PREFIX
+import com.northsignalstudio.myram.ui.richtext.applyChecklistStrikeThrough
 import com.northsignalstudio.myram.ui.richtext.checkedChecklistContentRanges
+import com.northsignalstudio.myram.ui.richtext.checklistIconRangeContainingOffset
+import com.northsignalstudio.myram.ui.richtext.checklistIconRanges
 import com.northsignalstudio.myram.ui.richtext.isChecklistIconAtOffset
 import com.northsignalstudio.myram.ui.richtext.pinCandidateInText
 import com.northsignalstudio.myram.ui.richtext.toggleChecklistInText
@@ -71,6 +77,30 @@ class RichTextChecklistAndSelectionTest {
         assertTrue(isChecklistIconAtOffset(text, 0))
         assertTrue(isChecklistIconAtOffset(text, 1))
         assertFalse(isChecklistIconAtOffset(text, CHECKLIST_UNCHECKED_PREFIX.length))
+    }
+
+    @Test
+    fun checklistIconRangeContainingOffset_returnsPrefixForContainingLine() {
+        val text = "Before\n${CHECKLIST_UNCHECKED_PREFIX}Task\nAfter"
+        val offset = text.indexOf("Task")
+
+        val range = checklistIconRangeContainingOffset(text, offset)
+
+        requireNotNull(range)
+        assertEquals(CHECKLIST_UNCHECKED_PREFIX, text.substring(range.start, range.end))
+    }
+
+    @Test
+    fun checklistRendering_increasesCheckboxGlyphSize() {
+        val editable = SpannableStringBuilder("${CHECKLIST_UNCHECKED_PREFIX}Task")
+
+        applyChecklistStrikeThrough(editable)
+
+        val iconRange = checklistIconRanges(editable.toString()).first()
+        val iconSpans = editable.getSpans(iconRange.start, iconRange.end, AbsoluteSizeSpan::class.java)
+        val bodySpans = editable.getSpans(iconRange.end, editable.length, AbsoluteSizeSpan::class.java)
+        assertTrue(iconSpans.any { it.size == CHECKLIST_ICON_SIZE_SP })
+        assertTrue(bodySpans.none { it.size == CHECKLIST_ICON_SIZE_SP })
     }
 
     @Test

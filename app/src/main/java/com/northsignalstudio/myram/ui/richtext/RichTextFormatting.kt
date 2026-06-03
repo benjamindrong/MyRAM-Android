@@ -22,6 +22,7 @@ data class RichTextFormatState(
 
 internal const val CHECKLIST_UNCHECKED_PREFIX = "☐ "
 internal const val CHECKLIST_CHECKED_PREFIX = "☑ "
+internal const val CHECKLIST_ICON_SIZE_SP = 28
 private const val CHECKLIST_CHECKED_PREFIX_VARIANT = "☑︎ "
 private const val LEGACY_CHECKLIST_UNCHECKED_PREFIX = "- [ ] "
 private const val LEGACY_CHECKLIST_CHECKED_PREFIX = "- [x] "
@@ -207,6 +208,8 @@ fun applyChecklistStrikeThrough(editable: Editable) {
     normalizeLegacyChecklistPrefixes(editable)
     val existing = editable.getSpans(0, editable.length, ChecklistStrikeThroughSpan::class.java)
     existing.forEach(editable::removeSpan)
+    val existingIconSpans = editable.getSpans(0, editable.length, ChecklistIconSizeSpan::class.java)
+    existingIconSpans.forEach(editable::removeSpan)
 
     checkedChecklistContentRanges(editable.toString()).forEach { range ->
         if (range.start < range.end) {
@@ -217,6 +220,15 @@ fun applyChecklistStrikeThrough(editable: Editable) {
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
         }
+    }
+
+    checklistIconRanges(editable.toString()).forEach { range ->
+        editable.setSpan(
+            ChecklistIconSizeSpan(),
+            range.start,
+            range.end,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
     }
 }
 
@@ -370,6 +382,13 @@ internal fun toggleChecklistInText(
 internal fun isChecklistIconAtOffset(text: String, offset: Int): Boolean {
     if (text.isEmpty()) return false
     val safeOffset = offset.coerceIn(0, text.length - 1)
+    val range = checklistIconRangeContainingOffset(text, safeOffset) ?: return false
+    return safeOffset < range.end
+}
+
+internal fun checklistIconRangeContainingOffset(text: String, offset: Int): ChecklistContentRange? {
+    if (text.isEmpty()) return null
+    val safeOffset = offset.coerceIn(0, text.length - 1)
     val lineStart = text.lastIndexOf('\n', startIndex = (safeOffset - 1).coerceAtLeast(0))
         .let { if (it == -1) 0 else it + 1 }
     val lineEnd = text.indexOf('\n', startIndex = safeOffset).let { if (it == -1) text.length else it }
@@ -378,9 +397,9 @@ internal fun isChecklistIconAtOffset(text: String, offset: Int): Boolean {
         line.startsWith(CHECKLIST_UNCHECKED_PREFIX) -> CHECKLIST_UNCHECKED_PREFIX.length
         line.startsWith(CHECKLIST_CHECKED_PREFIX) -> CHECKLIST_CHECKED_PREFIX.length
         line.startsWith(CHECKLIST_CHECKED_PREFIX_VARIANT) -> CHECKLIST_CHECKED_PREFIX_VARIANT.length
-        else -> return false
+        else -> return null
     }
-    return safeOffset < lineStart + prefixLength
+    return ChecklistContentRange(start = lineStart, end = lineStart + prefixLength)
 }
 
 internal fun checkedChecklistContentRanges(text: String): List<ChecklistContentRange> {
@@ -398,6 +417,19 @@ internal fun checkedChecklistContentRanges(text: String): List<ChecklistContentR
         if (contentStart in lineStart..lineEnd) {
             ranges.add(ChecklistContentRange(start = contentStart, end = lineEnd))
         }
+        if (lineEnd >= text.length) break
+        lineStart = lineEnd + 1
+    }
+    return ranges
+}
+
+internal fun checklistIconRanges(text: String): List<ChecklistContentRange> {
+    if (text.isEmpty()) return emptyList()
+    val ranges = mutableListOf<ChecklistContentRange>()
+    var lineStart = 0
+    while (lineStart <= text.length) {
+        val lineEnd = text.indexOf('\n', startIndex = lineStart).let { if (it == -1) text.length else it }
+        checklistIconRangeContainingOffset(text, lineStart)?.let { ranges.add(it) }
         if (lineEnd >= text.length) break
         lineStart = lineEnd + 1
     }
@@ -482,6 +514,8 @@ private fun checklistPrefixLength(line: String): Int? {
         else -> null
     }
 }
+
+private class ChecklistIconSizeSpan : AbsoluteSizeSpan(CHECKLIST_ICON_SIZE_SP, true)
 
 private data class ChecklistPrefixReplacement(
     val start: Int,
