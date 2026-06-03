@@ -5,8 +5,8 @@ on:
     paths:
       - "docs/note-intelligence/**"
       - "app/src/main/assets/note-intelligence/**"
-      - "app/src/main/java/com/apexcoretechs/myram/intelligence/**"
-      - "app/src/test/java/com/apexcoretechs/myram/NoteIntelligenceSpecTest.kt"
+      - "app/src/main/java/com/northsignalstudio/myram/intelligence/**"
+      - "app/src/test/java/com/northsignalstudio/myram/NoteIntelligenceSpecTest.kt"
       - ".github/workflows/note-intelligence-validation.yml"
   push:
     branches:
@@ -14,8 +14,8 @@ on:
     paths:
       - "docs/note-intelligence/**"
       - "app/src/main/assets/note-intelligence/**"
-      - "app/src/main/java/com/apexcoretechs/myram/intelligence/**"
-      - "app/src/test/java/com/apexcoretechs/myram/NoteIntelligenceSpecTest.kt"
+      - "app/src/main/java/com/northsignalstudio/myram/intelligence/**"
+      - "app/src/test/java/com/northsignalstudio/myram/NoteIntelligenceSpecTest.kt"
       - ".github/workflows/note-intelligence-validation.yml"
 
 jobs:
@@ -44,4 +44,4 @@ jobs:
       - name: Run note-intelligence validation tests
         run: |
           ./gradlew :app:testDebugUnitTest \
-            --tests "com.apexcoretechs.myram.NoteIntelligenceSpecTest"
+            --tests "com.northsignalstudio.myram.NoteIntelligenceSpecTest"

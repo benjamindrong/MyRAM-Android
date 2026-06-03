@@ -5,8 +5,8 @@
 - App/repository name: `MyRAM`
 - Android app label: `MyRAM`
 - Gradle root project name: `MyRAM`
-- Android namespace: `com.apexcoretechs.myram`
-- Android application ID: `com.apexcoretechs.myram`
+- Android namespace: `com.northsignalstudio.myram`
+- Android application ID: `com.northsignalstudio.myram`
 - File provider authority: `${applicationId}.fileprovider`
 - Local database name: `myram.db`
 - Shared preferences name: `myram_prefs`
@@ -37,13 +37,13 @@
 - App label is set in `app/src/main/AndroidManifest.xml` and `app/src/main/res/values/strings.xml`.
 - File provider authority is set in `app/src/main/AndroidManifest.xml`.
 - Database name and shared preferences name are set in:
-  - `app/src/main/java/com/apexcoretechs/myram/data/Repository.kt`
-  - `app/src/main/java/com/apexcoretechs/myram/MainActivity.kt`
-  - `app/src/main/java/com/apexcoretechs/myram/ui/NotesViewModel.kt`
+  - `app/src/main/java/com/northsignalstudio/myram/data/Repository.kt`
+  - `app/src/main/java/com/northsignalstudio/myram/MainActivity.kt`
+  - `app/src/main/java/com/northsignalstudio/myram/ui/NotesViewModel.kt`
 - Export filenames are hardcoded in:
-  - `app/src/main/java/com/apexcoretechs/myram/export/NoteExporter.kt`
-  - `app/src/main/java/com/apexcoretechs/myram/MainActivity.kt`
-- Rich text prefixes are hardcoded in `app/src/main/java/com/apexcoretechs/myram/ui/richtext/RichTextContent.kt`.
+  - `app/src/main/java/com/northsignalstudio/myram/export/NoteExporter.kt`
+  - `app/src/main/java/com/northsignalstudio/myram/MainActivity.kt`
+- Rich text prefixes are hardcoded in `app/src/main/java/com/northsignalstudio/myram/ui/richtext/RichTextContent.kt`.
 - Note intelligence schema IDs are hardcoded in:
   - `docs/note-intelligence/contracts/note_intelligence_input.schema.v1.json`
   - `docs/note-intelligence/contracts/note_intelligence_output.schema.v1.json`
