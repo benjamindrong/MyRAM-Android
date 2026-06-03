@@ -1190,24 +1190,26 @@ private fun PinnedTextSection(
                 }
             } else {
                 val preview = pinnedTextItems.firstOrNull()?.text
-                    ?.lineSequence()
-                    ?.firstOrNull()
                     ?.ifBlank { "Pinned" }
                     ?: "Pinned"
-                Text(
-                    text = preview,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = if (preview == "Pinned") {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Surface(
                     modifier = Modifier
                         .padding(start = 8.dp, end = 8.dp, bottom = 6.dp)
-                        .testTag("pinned-text-collapsed-preview")
-                )
+                        .testTag("pinned-text-collapsed-preview"),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = preview,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        color = if (preview == "Pinned") {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
     }

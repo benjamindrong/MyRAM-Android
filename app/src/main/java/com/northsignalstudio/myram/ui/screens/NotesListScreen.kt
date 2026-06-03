@@ -60,6 +60,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -1093,21 +1094,21 @@ private fun NoteListRow(
                 }
 
                 pinnedTextPreviewLine(pinnedTextItems)?.let { preview ->
-                    Text(
+                    PinnedPreviewText(
                         text = preview,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.testTag("note-row-pinned-text")
                     )
                 }
 
-                Text(
-                    plainTextFromStoredContent(note.content).take(120),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2
-                )
+                val contentPreview = noteContentPreviewText(note.content)
+                if (contentPreview.isNotEmpty()) {
+                    Text(
+                        contentPreview.take(120),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2
+                    )
+                }
 
                 if (showingRecentlyDeleted) {
                     Row(
@@ -1157,32 +1158,26 @@ private fun NotePreviewDialog(
                     overflow = TextOverflow.Ellipsis
                 )
                 pinnedTextPreviewLine(pinnedTextItems)?.let { preview ->
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                    ) {
-                        Text(
-                            text = preview,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    PinnedPreviewText(
+                        text = preview,
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
+                val contentPreview = noteContentPreviewText(note.content)
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    Text(
-                        text = plainTextFromStoredContent(note.content).ifBlank { "No content yet" },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (contentPreview.isNotEmpty()) {
+                        Text(
+                            text = contentPreview,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 Row(modifier = Modifier.fillMaxWidth()) {
                     TextButton(onClick = onTogglePinned) {
@@ -1208,6 +1203,44 @@ private fun NotePreviewDialog(
             }
         }
     }
+}
+
+@Composable
+private fun PinnedPreviewText(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int
+) {
+    Surface(
+        modifier = modifier,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+internal fun noteContentPreviewText(content: String): String {
+    return plainTextFromStoredContent(content)
+        .lineSequence()
+        .filterNot(::isCompletedChecklistPreviewLine)
+        .joinToString(separator = "\n")
+        .trim()
+}
+
+internal fun isCompletedChecklistPreviewLine(line: String): Boolean {
+    val trimmed = line.trimStart()
+    return trimmed.startsWith("☑ ")
+        || trimmed.startsWith("☑︎ ")
+        || Regex("""^\[[xX]\]\s+""").containsMatchIn(trimmed)
+        || Regex("""^-\s+\[[xX]\]\s+""").containsMatchIn(trimmed)
 }
 
 private fun pinnedTextPreviewLine(pinnedTextItems: List<PinnedText>): String? {
