@@ -68,6 +68,7 @@ import androidx.compose.ui.window.Dialog
 import com.apexcoretechs.myram.data.Folder
 import com.apexcoretechs.myram.data.Note
 import com.apexcoretechs.myram.data.PinnedText
+import com.apexcoretechs.myram.debug.DebugDemoDataGenerator
 import com.apexcoretechs.myram.ui.components.ChromeActionBar
 import com.apexcoretechs.myram.ui.components.computeTopBarLayout
 import com.apexcoretechs.myram.ui.NotesViewModel
@@ -118,6 +119,7 @@ fun NotesListScreen(
     var showingBulkActions by remember { mutableStateOf(false) }
     var showingRenameMainListDialog by remember { mutableStateOf(false) }
     var showingAppearanceDialog by remember { mutableStateOf(false) }
+    var showingClearDemoNotesDialog by remember { mutableStateOf(false) }
     var renameMainListTitle by remember { mutableStateOf(mainListTitle) }
     var activeFolderMenuId by remember { mutableStateOf<Int?>(null) }
 
@@ -165,6 +167,29 @@ fun NotesListScreen(
                         createFolderName = ""
                     }
                 ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showingClearDemoNotesDialog) {
+        AlertDialog(
+            onDismissRequest = { showingClearDemoNotesDialog = false },
+            title = { Text("Clear Demo Notes?") },
+            text = { Text("Only notes created by the demo data generator will be removed.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showingClearDemoNotesDialog = false
+                        vm.clearDemoNotes()
+                    }
+                ) {
+                    Text("Clear Demo Notes")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showingClearDemoNotesDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -767,6 +792,22 @@ fun NotesListScreen(
                                     showingAppearanceDialog = true
                                 }
                             )
+                            if (DebugDemoDataGenerator.isAvailable) {
+                                DropdownMenuItem(
+                                    text = { Text("Generate Demo Notes") },
+                                    onClick = {
+                                        actionsMenuExpanded = false
+                                        vm.generateDemoNotes()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Clear Demo Notes") },
+                                    onClick = {
+                                        actionsMenuExpanded = false
+                                        showingClearDemoNotesDialog = true
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -1169,14 +1210,20 @@ private fun NotePreviewDialog(
 }
 
 private fun pinnedTextPreviewLine(pinnedTextItems: List<PinnedText>): String? {
-    return pinnedTextItems
+    val previewItems = pinnedTextItems
         .sortedWith(compareBy<PinnedText> { it.sortOrder }.thenBy { it.createdAt })
-        .firstOrNull()
-        ?.text
-        ?.lineSequence()
-        ?.firstOrNull()
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
+        .mapNotNull { pinnedText ->
+            pinnedText.text
+                .lineSequence()
+                .firstOrNull()
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        }
+        .take(2)
+
+    return previewItems
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(separator = " • ")
 }
 
 private data class ListTopBarActionSpec(
