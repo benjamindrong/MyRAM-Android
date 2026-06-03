@@ -417,25 +417,25 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
 
     override fun pinSelection(): PinnedEditorSelection? {
         val editable = text ?: return null
-        val start = minOf(selectionStart, selectionEnd).coerceIn(0, editable.length)
-        val end = maxOf(selectionStart, selectionEnd).coerceIn(0, editable.length)
-        if (start == end) return null
+        val cursor = selectionStart.coerceIn(0, editable.length)
+        val candidate = pinCandidateInText(editable.toString(), cursor) ?: return null
+        val start = candidate.textStart
+        val end = candidate.textEnd
 
         val selected = SpannableStringBuilder(editable.subSequence(start, end))
         val plainText = selected.toString()
-        if (plainText.trim().isEmpty()) return null
         val sourceContent = encodeRichTextContent(selected)
 
         suppressCallbacks = true
-        editable.delete(start, end)
+        editable.delete(candidate.sourceStart, candidate.sourceEnd)
         suppressCallbacks = false
-        setSelection(start.coerceAtMost(editable.length))
+        setSelection(candidate.sourceStart.coerceAtMost(editable.length))
         publishChanges()
 
         return PinnedEditorSelection(
             text = plainText,
             sourceContent = sourceContent,
-            sourceStart = start
+            sourceStart = candidate.sourceStart
         )
     }
 

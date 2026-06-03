@@ -39,6 +39,13 @@ internal data class ChecklistTextUpdate(
     val selectionEnd: Int
 )
 
+internal data class PinTextCandidate(
+    val textStart: Int,
+    val textEnd: Int,
+    val sourceStart: Int,
+    val sourceEnd: Int
+)
+
 internal data class ChecklistContentRange(
     val start: Int,
     val end: Int
@@ -397,6 +404,28 @@ internal fun checkedChecklistContentRanges(text: String): List<ChecklistContentR
     return ranges
 }
 
+internal fun pinCandidateInText(text: String, cursor: Int): PinTextCandidate? {
+    if (text.isEmpty()) return null
+
+    val lineProbe = cursor.coerceIn(0, text.lastIndex)
+    val previousNewline = if (lineProbe == 0) -1 else text.lastIndexOf('\n', startIndex = lineProbe - 1)
+    val lineStart = if (previousNewline == -1) 0 else previousNewline + 1
+    val lineEnd = text.indexOf('\n', startIndex = lineProbe).let { if (it == -1) text.length else it }
+    val line = text.substring(lineStart, lineEnd)
+    val prefixLength = checklistPrefixLength(line) ?: 0
+    val textStart = lineStart + prefixLength
+    val pinnedText = text.substring(textStart, lineEnd).trim()
+    if (pinnedText.isEmpty()) return null
+
+    val sourceEnd = if (lineEnd < text.length) lineEnd + 1 else lineEnd
+    return PinTextCandidate(
+        textStart = textStart,
+        textEnd = lineEnd,
+        sourceStart = lineStart,
+        sourceEnd = sourceEnd
+    )
+}
+
 private fun normalizeLegacyChecklistPrefixes(editable: Editable) {
     val text = editable.toString()
     if (text.isEmpty()) return
@@ -438,6 +467,19 @@ private fun normalizeLegacyChecklistPrefixes(editable: Editable) {
 
     replacements.asReversed().forEach { replacement ->
         editable.replace(replacement.start, replacement.end, replacement.replacement)
+    }
+}
+
+private fun checklistPrefixLength(line: String): Int? {
+    return when {
+        line.startsWith(CHECKLIST_CHECKED_PREFIX) -> CHECKLIST_CHECKED_PREFIX.length
+        line.startsWith(CHECKLIST_CHECKED_PREFIX_VARIANT) -> CHECKLIST_CHECKED_PREFIX_VARIANT.length
+        line.startsWith(CHECKLIST_UNCHECKED_PREFIX) -> CHECKLIST_UNCHECKED_PREFIX.length
+        line.startsWith(LEGACY_CHECKLIST_CHECKED_PREFIX, ignoreCase = true) -> LEGACY_CHECKLIST_CHECKED_PREFIX.length
+        line.startsWith(LEGACY_CHECKLIST_UNCHECKED_PREFIX) -> LEGACY_CHECKLIST_UNCHECKED_PREFIX.length
+        line.startsWith(LEGACY_SHORT_CHECKED_PREFIX, ignoreCase = true) -> LEGACY_SHORT_CHECKED_PREFIX.length
+        line.startsWith(LEGACY_SHORT_UNCHECKED_PREFIX) -> LEGACY_SHORT_UNCHECKED_PREFIX.length
+        else -> null
     }
 }
 

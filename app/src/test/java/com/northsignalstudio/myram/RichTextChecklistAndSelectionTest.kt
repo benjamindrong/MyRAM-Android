@@ -4,6 +4,7 @@ import com.northsignalstudio.myram.ui.richtext.CHECKLIST_CHECKED_PREFIX
 import com.northsignalstudio.myram.ui.richtext.CHECKLIST_UNCHECKED_PREFIX
 import com.northsignalstudio.myram.ui.richtext.checkedChecklistContentRanges
 import com.northsignalstudio.myram.ui.richtext.isChecklistIconAtOffset
+import com.northsignalstudio.myram.ui.richtext.pinCandidateInText
 import com.northsignalstudio.myram.ui.richtext.toggleChecklistInText
 import com.northsignalstudio.myram.ui.richtext.toggleSelectAllRange
 import org.junit.Assert.assertEquals
@@ -87,5 +88,43 @@ class RichTextChecklistAndSelectionTest {
         assertEquals(8, selection.start)
         assertEquals(8, selection.end)
     }
-}
 
+    @Test
+    fun pinCandidateInText_ignoresSelectionAndUsesEntireCursorLine() {
+        val text = "Before\nPin this entire line please\nAfter"
+        val cursor = text.indexOf("entire")
+
+        val candidate = pinCandidateInText(text, cursor)
+
+        requireNotNull(candidate)
+        assertEquals("Pin this entire line please", text.substring(candidate.textStart, candidate.textEnd))
+        assertEquals("Pin this entire line please\n", text.substring(candidate.sourceStart, candidate.sourceEnd))
+    }
+
+    @Test
+    fun pinCandidateInText_usesCursorLineWhenSelectionIsCollapsed() {
+        val text = "Before\nPin this line from cursor\nAfter"
+        val cursor = text.indexOf("from")
+
+        val candidate = pinCandidateInText(text, cursor)
+
+        requireNotNull(candidate)
+        assertEquals("Pin this line from cursor", text.substring(candidate.textStart, candidate.textEnd))
+        assertEquals("Pin this line from cursor\n", text.substring(candidate.sourceStart, candidate.sourceEnd))
+    }
+
+    @Test
+    fun pinCandidateInText_stripsChecklistPrefixFromPinnedText() {
+        val text = "Before\n${CHECKLIST_UNCHECKED_PREFIX}Follow up on pinned thought\nAfter"
+        val cursor = text.indexOf("Follow")
+
+        val candidate = pinCandidateInText(text, cursor)
+
+        requireNotNull(candidate)
+        assertEquals("Follow up on pinned thought", text.substring(candidate.textStart, candidate.textEnd))
+        assertEquals(
+            "${CHECKLIST_UNCHECKED_PREFIX}Follow up on pinned thought\n",
+            text.substring(candidate.sourceStart, candidate.sourceEnd)
+        )
+    }
+}
