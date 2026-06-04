@@ -206,7 +206,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
     }
     internal val paragraphSpacingPx = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_SP,
-        4f, // Extra 0.25 line spacing for paragraphs (assuming 16sp base)
+        8f, // Extra 0.5 line spacing for paragraphs (assuming 16sp base)
         resources.displayMetrics
     ).toInt()
     private var baseLeftPaddingPx = 0
@@ -466,7 +466,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         val safeStart = selectionStart.coerceIn(0, editable.length)
         val safeEnd = selectionEnd.coerceIn(0, editable.length)
         suppressCallbacks = true
-        val result = toggleChecklistAtSelection(editable, safeStart, safeEnd)
+        val result = toggleChecklistAtSelection(editable, safeStart, safeEnd, paragraphSpacingPx)
         suppressCallbacks = false
         setSelection(
             result.selectionStart.coerceAtMost(editable.length),
@@ -628,7 +628,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         if (rawContentX !in targetLeft..targetRight || contentY !in targetTop..targetBottom) return false
 
         suppressCallbacks = true
-        val result = toggleChecklistAtSelection(editable, iconRange.start, iconRange.start)
+        val result = toggleChecklistAtSelection(editable, iconRange.start, iconRange.start, paragraphSpacingPx)
         suppressCallbacks = false
         setSelection(result.selectionStart.coerceAtMost(editable.length))
         animateChecklistToggle()

@@ -253,7 +253,8 @@ fun applyRichTextFormatting(editable: Editable, paragraphSpacingPx: Int = 0) {
 internal fun toggleChecklistAtSelection(
     editable: Editable,
     selectionStart: Int,
-    selectionEnd: Int
+    selectionEnd: Int,
+    paragraphSpacingPx: Int = 0
 ): ChecklistSelectionResult {
     val text = editable.toString()
     val length = text.length
@@ -307,7 +308,7 @@ internal fun toggleChecklistAtSelection(
     }
 
     editable.replace(replacement.start, replacement.end, replacement.replacement)
-    applyRichTextFormatting(editable)
+    applyRichTextFormatting(editable, paragraphSpacingPx)
 
     val oldEnd = replacement.end
     val newEnd = replacement.start + replacement.replacement.length
@@ -540,7 +541,16 @@ private class ChecklistControlPlaceholderSpan : ReplacementSpan() {
         start: Int,
         end: Int,
         fm: Paint.FontMetricsInt?
-    ): Int = 0
+    ): Int {
+        fm?.let {
+            val metrics = paint.fontMetricsInt
+            it.ascent = metrics.ascent
+            it.descent = metrics.descent
+            it.top = metrics.top
+            it.bottom = metrics.bottom
+        }
+        return 0
+    }
 
     override fun draw(
         canvas: android.graphics.Canvas,
@@ -779,8 +789,11 @@ internal class ParagraphSpacingSpan(private val spacingPx: Int) : LineHeightSpan
         v: Int,
         fm: Paint.FontMetricsInt
     ) {
-        // If the line ends with a newline, add extra space below it
-        if (end > 0 && end <= text.length && text[end - 1] == '\n') {
+        // More robust check for paragraph end: 
+        // Either the line ends with a newline, or it's followed by one.
+        val hasNewline = end > 0 && end <= text.length && (text[end - 1] == '\n' || (end < text.length && text[end] == '\n'))
+        
+        if (hasNewline) {
             fm.descent += spacingPx
             fm.bottom += spacingPx
         }
