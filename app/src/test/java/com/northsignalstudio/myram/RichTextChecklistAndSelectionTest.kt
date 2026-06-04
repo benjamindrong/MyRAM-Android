@@ -9,7 +9,6 @@ import com.northsignalstudio.myram.ui.richtext.pinCandidateInText
 import com.northsignalstudio.myram.ui.richtext.toggleChecklistInText
 import com.northsignalstudio.myram.ui.richtext.toggleSelectAllRange
 import android.graphics.Paint
-import com.northsignalstudio.myram.ui.richtext.ChecklistControlPlaceholderSpan
 import com.northsignalstudio.myram.ui.richtext.ParagraphSpacingSpan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -174,25 +173,4 @@ class RichTextChecklistAndSelectionTest {
         assertEquals(5 + 15, fm.descent)
     }
 
-    @Test
-    fun checklistControlPlaceholderSpan_getSize_updatesFontMetricsForAlignment() {
-        val span = ChecklistControlPlaceholderSpan()
-        val paint = Paint()
-        val fm = Paint.FontMetricsInt()
-        
-        // In some unit test environments Paint.fontMetricsInt might return null
-        // If it doesn't crash, we verify the metrics are copied.
-        try {
-            val metrics = paint.fontMetricsInt ?: return 
-            metrics.ascent = -40
-            metrics.descent = 10
-
-            span.getSize(paint, "any", 0, 1, fm)
-
-            assertEquals(metrics.ascent, fm.ascent)
-            assertEquals(metrics.descent, fm.descent)
-        } catch (e: Exception) {
-            // If Paint is not mocked, we skip this specific verification in local unit tests
-        }
-    }
 }

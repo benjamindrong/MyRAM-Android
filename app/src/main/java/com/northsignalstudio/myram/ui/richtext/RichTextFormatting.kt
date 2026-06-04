@@ -446,7 +446,7 @@ internal fun checklistIconRanges(text: String): List<ChecklistContentRange> {
     if (text.isEmpty()) return emptyList()
     val ranges = mutableListOf<ChecklistContentRange>()
     var lineStart = 0
-    while (lineStart <= text.length) {
+    while (lineStart < text.length) {
         val lineEnd = text.indexOf('\n', startIndex = lineStart).let { if (it == -1) text.length else it }
         checklistIconRangeContainingOffset(text, lineStart)?.let { ranges.add(it) }
         if (lineEnd >= text.length) break
@@ -541,16 +541,7 @@ internal class ChecklistControlPlaceholderSpan : ReplacementSpan() {
         start: Int,
         end: Int,
         fm: Paint.FontMetricsInt?
-    ): Int {
-        fm?.let {
-            val metrics = paint.fontMetricsInt
-            it.ascent = metrics.ascent
-            it.descent = metrics.descent
-            it.top = metrics.top
-            it.bottom = metrics.bottom
-        }
-        return 0
-    }
+    ): Int = 0
 
     override fun draw(
         canvas: android.graphics.Canvas,

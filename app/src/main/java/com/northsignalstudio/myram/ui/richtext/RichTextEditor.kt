@@ -311,7 +311,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         setPadding(
             baseLeftPaddingPx + gutter,
             baseTopPaddingPx,
-            baseRightPaddingPx + gutter,
+            baseRightPaddingPx,
             bottomPaddingPx
         )
     }
