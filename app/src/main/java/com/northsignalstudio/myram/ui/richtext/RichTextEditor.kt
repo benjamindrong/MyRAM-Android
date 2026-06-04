@@ -197,7 +197,7 @@ internal interface RichTextEditorBinding {
 private class FormattingEditText(context: Context) : AppCompatEditText(context), RichTextEditorBinding {
     private val checklistGutterWidthPx = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP,
-        44f,
+        32f,
         resources.displayMetrics
     ).toInt()
     private val checklistIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -212,6 +212,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
     private var baseLeftPaddingPx = 0
     private var baseRightPaddingPx = 0
     private var baseTopPaddingPx = 0
+    private var lastBottomPaddingPx = 0
     private var suppressCallbacks = false
     private var onStoredContentChanged: ((String) -> Unit)? = null
     private var onPlainTextChanged: ((String) -> Unit)? = null
@@ -302,11 +303,15 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         drawChecklistGutter(canvas)
     }
 
-    private fun applyEditorPadding(bottomPaddingPx: Int) {
+    private fun applyEditorPadding(bottomPaddingPx: Int = lastBottomPaddingPx) {
+        lastBottomPaddingPx = bottomPaddingPx
+        val content = text?.toString().orEmpty()
+        val hasChecklist = checklistIconRanges(content).isNotEmpty()
+        val gutter = if (hasChecklist) checklistGutterWidthPx else 0
         setPadding(
-            baseLeftPaddingPx + checklistGutterWidthPx,
+            baseLeftPaddingPx + gutter,
             baseTopPaddingPx,
-            baseRightPaddingPx,
+            baseRightPaddingPx + gutter,
             bottomPaddingPx
         )
     }
@@ -591,6 +596,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         val editable = text ?: return
         onPlainTextChanged?.invoke(editable.toString())
         onStoredContentChanged?.invoke(encodeRichTextContent(editable))
+        applyEditorPadding()
         emitFormatState()
     }
 
@@ -632,11 +638,12 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
 
     private fun animateChecklistToggle() {
         animate().cancel()
+        alpha = 1f
         animate()
-            .alpha(0.85f)
-            .setDuration(70L)
+            .alpha(0.5f)
+            .setDuration(100L)
             .withEndAction {
-                animate().alpha(1f).setDuration(110L).start()
+                animate().alpha(1f).setDuration(100L).start()
             }
             .start()
     }
