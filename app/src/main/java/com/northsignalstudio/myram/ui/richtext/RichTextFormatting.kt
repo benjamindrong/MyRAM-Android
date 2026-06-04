@@ -534,7 +534,7 @@ private fun checklistPrefixLength(line: String): Int? {
     }
 }
 
-private class ChecklistControlPlaceholderSpan : ReplacementSpan() {
+internal class ChecklistControlPlaceholderSpan : ReplacementSpan() {
     override fun getSize(
         paint: Paint,
         text: CharSequence?,
