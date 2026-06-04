@@ -56,6 +56,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -77,6 +78,7 @@ import com.northsignalstudio.myram.ui.theme.AppearanceSetting
 import com.northsignalstudio.myram.ui.theme.EditorChromeStyle
 import com.northsignalstudio.myram.debug.DebugDemoDataGenerator
 
+private val pinnedHighlightColor = Color(0xFFFAB942)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1214,13 +1216,13 @@ private fun PinnedPreviewText(
     Surface(
         modifier = modifier,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        color = pinnedHighlightColor
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis
         )

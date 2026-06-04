@@ -124,6 +124,8 @@ private val editorColorSwatches = listOf(
     Color(0xFF6D28D9)
 )
 
+private val pinnedHighlightColor = Color(0xFFFAB942)
+
 @Composable
 private fun AttachmentThumbnail(
     attachment: NotePhotoAttachment,
@@ -1200,7 +1202,7 @@ private fun PinnedTextSection(
                         .padding(start = 8.dp, end = 8.dp, bottom = 6.dp)
                         .testTag("pinned-text-collapsed-preview"),
                     shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    color = pinnedHighlightColor
                 ) {
                     Text(
                         text = preview,
@@ -1208,7 +1210,7 @@ private fun PinnedTextSection(
                         color = if (preview == "Pinned") {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
-                            MaterialTheme.colorScheme.primary
+                            MaterialTheme.colorScheme.onSurface
                         },
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     )
