@@ -5,7 +5,7 @@ import android.text.style.AbsoluteSizeSpan
 import com.northsignalstudio.myram.ui.richtext.CHECKLIST_CHECKED_PREFIX
 import com.northsignalstudio.myram.ui.richtext.CHECKLIST_ICON_SIZE_SP
 import com.northsignalstudio.myram.ui.richtext.CHECKLIST_UNCHECKED_PREFIX
-import com.northsignalstudio.myram.ui.richtext.applyChecklistStrikeThrough
+import com.northsignalstudio.myram.ui.richtext.applyRichTextFormatting
 import com.northsignalstudio.myram.ui.richtext.checkedChecklistContentRanges
 import com.northsignalstudio.myram.ui.richtext.checklistIconRangeContainingOffset
 import com.northsignalstudio.myram.ui.richtext.checklistIconRanges
@@ -94,7 +94,7 @@ class RichTextChecklistAndSelectionTest {
     fun checklistRendering_increasesCheckboxGlyphSize() {
         val editable = SpannableStringBuilder("${CHECKLIST_UNCHECKED_PREFIX}Task")
 
-        applyChecklistStrikeThrough(editable)
+        applyRichTextFormatting(editable)
 
         val iconRange = checklistIconRanges(editable.toString()).first()
         val iconSpans = editable.getSpans(iconRange.start, iconRange.end, AbsoluteSizeSpan::class.java)

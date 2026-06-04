@@ -149,7 +149,7 @@ internal fun RichTextEditor(
                 applySelectionColors(contentTextColor)
                 hint = placeholderText
                 setText(decodeRichTextContent(storedContent), TextView.BufferType.EDITABLE)
-                text?.let(::applyChecklistStrikeThrough)
+                text?.let { applyRichTextFormatting(it, paragraphSpacingPx) }
                 moveCursorToEnd()
                 installWatchers(
                     onStoredContentChanged = onStoredContentChanged,
@@ -204,6 +204,11 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
     }
+    internal val paragraphSpacingPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_SP,
+        4f, // Extra 0.25 line spacing for paragraphs (assuming 16sp base)
+        resources.displayMetrics
+    ).toInt()
     private var baseLeftPaddingPx = 0
     private var baseRightPaddingPx = 0
     private var baseTopPaddingPx = 0
@@ -261,7 +266,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
                 override fun afterTextChanged(s: Editable?) {
                     if (s == null || suppressCallbacks) return
                     suppressCallbacks = true
-                    applyChecklistStrikeThrough(s)
+                    applyRichTextFormatting(s, paragraphSpacingPx)
                     suppressCallbacks = false
                     publishChanges()
                 }
@@ -366,7 +371,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         val currentEnd = selectionEnd
         suppressCallbacks = true
         setText(decodeRichTextContent(storedContent), BufferType.EDITABLE)
-        text?.let(::applyChecklistStrikeThrough)
+        text?.let { applyRichTextFormatting(it, paragraphSpacingPx) }
         val length = text?.length ?: 0
         val safeStart = currentStart.coerceIn(0, length)
         val safeEnd = currentEnd.coerceIn(0, length)
@@ -409,7 +414,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         suppressCallbacks = true
         action(editable, safeStart, safeEnd)
         suppressCallbacks = false
-        applyChecklistStrikeThrough(editable)
+        applyRichTextFormatting(editable, paragraphSpacingPx)
         setSelection(
             safeStart.coerceAtMost(editable.length),
             safeEnd.coerceAtMost(editable.length)

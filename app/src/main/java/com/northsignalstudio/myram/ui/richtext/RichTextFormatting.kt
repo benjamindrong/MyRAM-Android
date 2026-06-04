@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.text.Editable
 import android.text.Spanned
 import android.text.style.AbsoluteSizeSpan
+import android.text.style.LineHeightSpan
 import android.text.style.ReplacementSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
@@ -206,12 +207,27 @@ fun applyFontSize(
     }
 }
 
-fun applyChecklistStrikeThrough(editable: Editable) {
+fun applyRichTextFormatting(editable: Editable, paragraphSpacingPx: Int = 0) {
     normalizeLegacyChecklistPrefixes(editable)
-    val existing = editable.getSpans(0, editable.length, ChecklistStrikeThroughSpan::class.java)
-    existing.forEach(editable::removeSpan)
-    val existingIconSpans = editable.getSpans(0, editable.length, ChecklistControlPlaceholderSpan::class.java)
-    existingIconSpans.forEach(editable::removeSpan)
+    
+    // Clear existing spans we manage here
+    val classesToRemove = arrayOf(
+        ChecklistStrikeThroughSpan::class.java,
+        ChecklistControlPlaceholderSpan::class.java,
+        ParagraphSpacingSpan::class.java
+    )
+    classesToRemove.forEach { clazz ->
+        editable.getSpans(0, editable.length, clazz).forEach(editable::removeSpan)
+    }
+
+    if (paragraphSpacingPx > 0) {
+        editable.setSpan(
+            ParagraphSpacingSpan(paragraphSpacingPx),
+            0,
+            editable.length,
+            Spanned.SPAN_INCLUSIVE_INCLUSIVE
+        )
+    }
 
     checkedChecklistContentRanges(editable.toString()).forEach { range ->
         if (range.start < range.end) {
@@ -291,7 +307,7 @@ internal fun toggleChecklistAtSelection(
     }
 
     editable.replace(replacement.start, replacement.end, replacement.replacement)
-    applyChecklistStrikeThrough(editable)
+    applyRichTextFormatting(editable)
 
     val oldEnd = replacement.end
     val newEnd = replacement.start + replacement.replacement.length
@@ -753,3 +769,20 @@ private fun <T> removeCursorSpan(editable: Editable, index: Int, clazz: Class<T>
 }
 
 private class ChecklistStrikeThroughSpan : StrikethroughSpan()
+
+internal class ParagraphSpacingSpan(private val spacingPx: Int) : LineHeightSpan {
+    override fun chooseHeight(
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        spanstartv: Int,
+        v: Int,
+        fm: Paint.FontMetricsInt
+    ) {
+        // If the line ends with a newline, add extra space below it
+        if (end > 0 && end <= text.length && text[end - 1] == '\n') {
+            fm.descent += spacingPx
+            fm.bottom += spacingPx
+        }
+    }
+}
