@@ -1,9 +1,11 @@
 package com.northsignalstudio.myram.ui.richtext
 
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Editable
 import android.text.Spanned
 import android.text.style.AbsoluteSizeSpan
+import android.text.style.ReplacementSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
@@ -208,7 +210,7 @@ fun applyChecklistStrikeThrough(editable: Editable) {
     normalizeLegacyChecklistPrefixes(editable)
     val existing = editable.getSpans(0, editable.length, ChecklistStrikeThroughSpan::class.java)
     existing.forEach(editable::removeSpan)
-    val existingIconSpans = editable.getSpans(0, editable.length, ChecklistIconSizeSpan::class.java)
+    val existingIconSpans = editable.getSpans(0, editable.length, ChecklistControlPlaceholderSpan::class.java)
     existingIconSpans.forEach(editable::removeSpan)
 
     checkedChecklistContentRanges(editable.toString()).forEach { range ->
@@ -224,7 +226,7 @@ fun applyChecklistStrikeThrough(editable: Editable) {
 
     checklistIconRanges(editable.toString()).forEach { range ->
         editable.setSpan(
-            ChecklistIconSizeSpan(),
+            ChecklistControlPlaceholderSpan(),
             range.start,
             range.end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -515,7 +517,27 @@ private fun checklistPrefixLength(line: String): Int? {
     }
 }
 
-private class ChecklistIconSizeSpan : AbsoluteSizeSpan(CHECKLIST_ICON_SIZE_SP, true)
+private class ChecklistControlPlaceholderSpan : ReplacementSpan() {
+    override fun getSize(
+        paint: Paint,
+        text: CharSequence?,
+        start: Int,
+        end: Int,
+        fm: Paint.FontMetricsInt?
+    ): Int = 0
+
+    override fun draw(
+        canvas: android.graphics.Canvas,
+        text: CharSequence?,
+        start: Int,
+        end: Int,
+        x: Float,
+        top: Int,
+        y: Int,
+        bottom: Int,
+        paint: Paint
+    ) = Unit
+}
 
 private data class ChecklistPrefixReplacement(
     val start: Int,

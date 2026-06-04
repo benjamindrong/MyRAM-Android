@@ -3,6 +3,9 @@ package com.northsignalstudio.myram.ui.richtext
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.text.Editable
@@ -146,6 +149,7 @@ internal fun RichTextEditor(
                 applySelectionColors(contentTextColor)
                 hint = placeholderText
                 setText(decodeRichTextContent(storedContent), TextView.BufferType.EDITABLE)
+                text?.let(::applyChecklistStrikeThrough)
                 moveCursorToEnd()
                 installWatchers(
                     onStoredContentChanged = onStoredContentChanged,
@@ -191,6 +195,18 @@ internal interface RichTextEditorBinding {
 }
 
 private class FormattingEditText(context: Context) : AppCompatEditText(context), RichTextEditorBinding {
+    private val checklistGutterWidthPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        44f,
+        resources.displayMetrics
+    ).toInt()
+    private val checklistIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+    }
+    private var baseLeftPaddingPx = 0
+    private var baseRightPaddingPx = 0
+    private var baseTopPaddingPx = 0
     private var suppressCallbacks = false
     private var onStoredContentChanged: ((String) -> Unit)? = null
     private var onPlainTextChanged: ((String) -> Unit)? = null
@@ -202,6 +218,11 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         minLines = 10
         isVerticalScrollBarEnabled = true
         overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
+        includeFontPadding = true
+        baseLeftPaddingPx = paddingLeft
+        baseRightPaddingPx = paddingRight
+        baseTopPaddingPx = paddingTop
+        applyEditorPadding(paddingBottom)
 
         val disabledActionModeCallback = object : ActionMode.Callback {
             override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
@@ -270,6 +291,59 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         return super.onTouchEvent(event)
     }
 
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        drawChecklistGutter(canvas)
+    }
+
+    private fun applyEditorPadding(bottomPaddingPx: Int) {
+        setPadding(
+            baseLeftPaddingPx + checklistGutterWidthPx,
+            baseTopPaddingPx,
+            baseRightPaddingPx,
+            bottomPaddingPx
+        )
+    }
+
+    private fun drawChecklistGutter(canvas: Canvas) {
+        val editable = text ?: return
+        val editorLayout = layout ?: return
+        val content = editable.toString()
+        if (content.isEmpty()) return
+
+        checklistIconPaint.color = currentTextColor
+        checklistIconPaint.textSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP,
+            CHECKLIST_ICON_SIZE_SP.toFloat(),
+            resources.displayMetrics
+        )
+
+        val textMetrics = paint.fontMetrics
+        val iconMetrics = checklistIconPaint.fontMetrics
+        // Center the icon vertically relative to the text line's center
+        val textCenter = (textMetrics.descent + textMetrics.ascent) / 2f
+        val iconCenter = (iconMetrics.descent + iconMetrics.ascent) / 2f
+        val alignmentOffset = textCenter - iconCenter
+
+        val gutterCenterX = scrollX + baseLeftPaddingPx + checklistGutterWidthPx / 2f
+        checklistIconRanges(content).forEach { range ->
+            if (range.start >= editable.length) return@forEach
+            val line = editorLayout.getLineForOffset(range.start)
+            val lineBaseline = editorLayout.getLineBaseline(line).toFloat()
+            val icon = when {
+                content.startsWith(CHECKLIST_CHECKED_PREFIX, range.start) -> CHECKLIST_CHECKED_PREFIX.trim()
+                else -> CHECKLIST_UNCHECKED_PREFIX.trim()
+            }
+            canvas.drawText(
+                icon,
+                gutterCenterX,
+                totalPaddingTop + lineBaseline + alignmentOffset,
+                checklistIconPaint
+            )
+        }
+    }
+
     fun emitFormatState(onFormatStateChanged: (RichTextFormatState) -> Unit) {
         this.onFormatStateChanged = onFormatStateChanged
         emitFormatState()
@@ -292,6 +366,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         val currentEnd = selectionEnd
         suppressCallbacks = true
         setText(decodeRichTextContent(storedContent), BufferType.EDITABLE)
+        text?.let(::applyChecklistStrikeThrough)
         val length = text?.length ?: 0
         val safeStart = currentStart.coerceIn(0, length)
         val safeEnd = currentEnd.coerceIn(0, length)
@@ -313,12 +388,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
             inset.value,
             resources.displayMetrics
         ).toInt()
-        setPadding(
-            paddingLeft,
-            paddingTop,
-            paddingRight,
-            bottomPaddingPx
-        )
+        applyEditorPadding(bottomPaddingPx)
     }
 
     fun applySelectionColors(contentTextColor: Color) {
@@ -525,16 +595,15 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
     private fun tryToggleChecklistFromTouch(event: MotionEvent): Boolean {
         val editable = text ?: return false
         val layout = layout ?: return false
-        val contentX = event.x - totalPaddingLeft + scrollX
+        val rawContentX = event.x - totalPaddingLeft + scrollX
+        val contentX = rawContentX.coerceAtLeast(0f)
         val contentY = event.y - totalPaddingTop + scrollY
         val line = layout.getLineForVertical(contentY.toInt())
         if (line < 0 || line >= layout.lineCount) return false
         val offset = layout.getOffsetForHorizontal(line, contentX)
         if (offset < 0 || offset >= editable.length) return false
         val iconRange = checklistIconRangeContainingOffset(editable.toString(), offset) ?: return false
-        val iconStartX = layout.getPrimaryHorizontal(iconRange.start)
-        val iconEndX = layout.getPrimaryHorizontal(iconRange.end.coerceAtMost(editable.length))
-        val iconCenterX = (iconStartX + iconEndX) / 2f
+        val iconCenterX = -checklistGutterWidthPx / 2f
         val lineCenterY = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f
         val minimumTargetSize = TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
@@ -545,7 +614,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         val targetRight = iconCenterX + minimumTargetSize / 2f
         val targetTop = lineCenterY - minimumTargetSize / 2f
         val targetBottom = lineCenterY + minimumTargetSize / 2f
-        if (contentX !in targetLeft..targetRight || contentY !in targetTop..targetBottom) return false
+        if (rawContentX !in targetLeft..targetRight || contentY !in targetTop..targetBottom) return false
 
         suppressCallbacks = true
         val result = toggleChecklistAtSelection(editable, iconRange.start, iconRange.start)
