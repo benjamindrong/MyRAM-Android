@@ -944,7 +944,8 @@ fun NoteEditorScreen(
                         redoHistory = emptyList()
                         undoHistory = (undoHistory + before).takeLast(200)
                         vm.unpinText(pinnedText)
-                    }
+                    },
+                    onDelete = vm::deletePinnedParagraph
                 )
 
                 RichTextEditor(
@@ -1088,7 +1089,8 @@ private fun PinnedTextSection(
     onAdd: () -> Unit,
     onUpdate: (PinnedText, String) -> Unit,
     onMove: (PinnedText, Int) -> Unit,
-    onUnpin: (PinnedText) -> Unit
+    onUnpin: (PinnedText) -> Unit,
+    onDelete: (PinnedText) -> Unit
 ) {
     var activeDragId by remember { mutableStateOf<Long?>(null) }
     var activeDragOffsetY by remember { mutableFloatStateOf(0f) }
@@ -1181,7 +1183,8 @@ private fun PinnedTextSection(
                                 activeDragOffsetY = 0f
                                 pendingInsertionIndex = null
                             },
-                            onUnpin = onUnpin
+                            onUnpin = onUnpin,
+                            onDelete = onDelete
                         )
                         if (pendingInsertionIndex == index + 1) {
                             ReorderInsertionIndicator()
@@ -1226,7 +1229,8 @@ private fun PinnedTextRow(
     onMove: (PinnedText, Int) -> Unit,
     onDragChanged: (PinnedText, Float) -> Unit,
     onDragCancelled: () -> Unit,
-    onUnpin: (PinnedText) -> Unit
+    onUnpin: (PinnedText) -> Unit,
+    onDelete: (PinnedText) -> Unit
 ) {
     var draft by remember(pinnedText.id, pinnedText.text) { mutableStateOf(pinnedText.text) }
     var editing by remember(pinnedText.id) { mutableStateOf(false) }
@@ -1324,6 +1328,13 @@ private fun PinnedTextRow(
                     onClick = {
                         menuExpanded = false
                         onUnpin(pinnedText)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete") },
+                    onClick = {
+                        menuExpanded = false
+                        onDelete(pinnedText)
                     }
                 )
             }

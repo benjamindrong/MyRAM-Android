@@ -563,6 +563,14 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun unpinText(pinnedText: PinnedText) = viewModelScope.launch {
+        removePinnedParagraph(pinnedText)
+    }
+
+    fun deletePinnedParagraph(pinnedText: PinnedText) = viewModelScope.launch {
+        removePinnedParagraph(pinnedText)
+    }
+
+    private suspend fun removePinnedParagraph(pinnedText: PinnedText) {
         repo.noteDao.deletePinnedText(pinnedText)
         val now = System.currentTimeMillis()
         repo.noteDao.getPinnedTextForNotesOnce(listOf(pinnedText.noteId))
