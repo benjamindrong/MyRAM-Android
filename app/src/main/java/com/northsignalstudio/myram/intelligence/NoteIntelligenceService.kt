@@ -75,6 +75,10 @@ class NoteIntelligenceService(
         return engine.evaluateLabels(canonicalInput)
     }
 
+    suspend fun recognizedTextFor(attachment: NotePhotoAttachment): String {
+        return extractor.recognizeText(listOf(attachment.imageData))
+    }
+
     fun evaluateCanonicalInput(input: NoteIntelligenceCanonicalInput): List<String> {
         val engine = evaluator ?: NoteIntelligenceRuleEvaluator(specProvider.load()).also { evaluator = it }
         return engine.evaluateLabels(input)
@@ -284,7 +288,7 @@ class MlKitNoteIntelligenceExtractor {
     suspend fun extract(text: String, attachmentImageData: List<ByteArray>): Extraction {
         val tokens = tokenize(text)
         val lemmas = tokens.map { normalizeLemma(it) }
-        val ocrText = extractOcrText(attachmentImageData)
+        val ocrText = recognizeText(attachmentImageData)
         val ocrTokens = tokenize(ocrText)
 
         val language = detectLanguage(text)
@@ -313,7 +317,7 @@ class MlKitNoteIntelligenceExtractor {
         }.getOrElse { "und" }
     }
 
-    private suspend fun extractOcrText(imageData: List<ByteArray>): String {
+    suspend fun recognizeText(imageData: List<ByteArray>): String {
         if (imageData.isEmpty()) return ""
 
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)

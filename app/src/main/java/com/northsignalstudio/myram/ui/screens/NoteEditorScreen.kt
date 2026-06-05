@@ -29,6 +29,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -188,6 +191,7 @@ private fun AttachmentThumbnail(
 @Composable
 private fun AttachmentViewerDialog(
     attachment: NotePhotoAttachment,
+    onRecognizeText: suspend (NotePhotoAttachment) -> String,
     onDismiss: () -> Unit
 ) {
     val imageBitmap = remember(attachment.id) {
@@ -201,6 +205,9 @@ private fun AttachmentViewerDialog(
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
+    var recognizedText by remember(attachment.id) { mutableStateOf<String?>(null) }
+    var isRecognizingText by remember(attachment.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
@@ -237,6 +244,56 @@ private fun AttachmentViewerDialog(
                             translationY = offsetY
                         }
                     )
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Recognized Text",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            enabled = !isRecognizingText,
+                            onClick = {
+                                scope.launch {
+                                    isRecognizingText = true
+                                    recognizedText = runCatching {
+                                        onRecognizeText(attachment).trim()
+                                    }.getOrElse {
+                                        "Text recognition failed."
+                                    }
+                                    isRecognizingText = false
+                                }
+                            }
+                        ) {
+                            Text(if (isRecognizingText) "Recognizing..." else "Recognize text")
+                        }
+                    }
+
+                    val text = recognizedText
+                    if (text != null) {
+                        Spacer(Modifier.height(8.dp))
+                        SelectionContainer {
+                            Text(
+                                text = text.ifBlank { "No text found." },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(140.dp)
+                                    .verticalScroll(rememberScrollState())
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1108,6 +1165,7 @@ fun NoteEditorScreen(
     if (expandedAttachment != null) {
         AttachmentViewerDialog(
             attachment = expandedAttachment,
+            onRecognizeText = vm::recognizeAttachmentText,
             onDismiss = { expandedAttachmentId = null }
         )
     }

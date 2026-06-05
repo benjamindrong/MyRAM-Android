@@ -642,6 +642,10 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         repo.noteDao.deleteAttachment(attachment)
     }
 
+    suspend fun recognizeAttachmentText(attachment: NotePhotoAttachment): String {
+        return noteIntelligenceService.recognizedTextFor(attachment)
+    }
+
     fun deleteNote(note: Note) = viewModelScope.launch {
         val previousDeletedAt = note.deletedAt
         val previousFolderId = note.folderId
