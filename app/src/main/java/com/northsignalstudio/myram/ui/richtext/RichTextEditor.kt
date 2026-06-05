@@ -16,10 +16,9 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextWatcher
 import android.util.TypedValue
-import android.view.ActionMode
-import android.view.Menu
-import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.ViewConfiguration
+import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.compose.runtime.Composable
@@ -30,6 +29,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.abs
 
 internal class RichTextEditorActions(
     private val editorProvider: () -> RichTextEditorBinding?
@@ -223,11 +223,18 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
     private var onStoredContentChanged: ((String) -> Unit)? = null
     private var onPlainTextChanged: ((String) -> Unit)? = null
     private var onFormatStateChanged: ((RichTextFormatState) -> Unit)? = null
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private var touchDownX = 0f
+    private var touchDownY = 0f
+    private var touchMoved = false
 
     init {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         minLines = 10
+        isFocusable = true
+        isFocusableInTouchMode = true
+        isCursorVisible = true
         isVerticalScrollBarEnabled = true
         overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
         includeFontPadding = true
@@ -235,25 +242,6 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         baseRightPaddingPx = paddingRight
         baseTopPaddingPx = paddingTop
         applyEditorPadding(paddingBottom)
-
-        val disabledActionModeCallback = object : ActionMode.Callback {
-            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-                menu?.clear()
-                mode?.finish()
-                return false
-            }
-
-            override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-                menu?.clear()
-                mode?.finish()
-                return false
-            }
-
-            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean = false
-            override fun onDestroyActionMode(mode: ActionMode?) = Unit
-        }
-        customSelectionActionModeCallback = disabledActionModeCallback
-        customInsertionActionModeCallback = disabledActionModeCallback
     }
 
     fun installWatchers(
@@ -286,21 +274,62 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         emitFormatState()
     }
 
-    override fun startActionMode(callback: ActionMode.Callback?): ActionMode? = null
-
-    override fun startActionMode(callback: ActionMode.Callback?, type: Int): ActionMode? = null
-
     override fun onTextContextMenuItem(id: Int): Boolean = false
 
     override fun isSuggestionsEnabled(): Boolean = false
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_UP) {
-            if (tryToggleChecklistFromTouch(event)) {
-                return true
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                touchDownX = event.x
+                touchDownY = event.y
+                touchMoved = false
+                requestFocus()
+                parent?.requestDisallowInterceptTouchEvent(canScrollVertically(-1) || canScrollVertically(1))
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (abs(event.x - touchDownX) > touchSlop || abs(event.y - touchDownY) > touchSlop) {
+                    touchMoved = true
+                }
+                parent?.requestDisallowInterceptTouchEvent(canScrollVertically(-1) || canScrollVertically(1))
+            }
+            MotionEvent.ACTION_UP -> {
+                if (tryToggleChecklistFromTouch(event)) {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                parent?.requestDisallowInterceptTouchEvent(false)
             }
         }
-        return super.onTouchEvent(event)
+        val handled = super.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP && hasFocus()) {
+            val isShortTap = !touchMoved && event.eventTime - event.downTime < ViewConfiguration.getLongPressTimeout()
+            if (isShortTap) {
+                placeCursorAtTouch(event)
+            }
+            post {
+                val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                inputMethodManager?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
+        return handled
+    }
+
+    private fun placeCursorAtTouch(event: MotionEvent) {
+        val editable = text ?: return
+        val editorLayout = layout ?: return
+        if (editable.isEmpty()) {
+            setSelection(0)
+            return
+        }
+        val contentX = event.x - totalPaddingLeft + scrollX
+        val contentY = event.y - totalPaddingTop + scrollY
+        val line = editorLayout.getLineForVertical(contentY.toInt()).coerceIn(0, editorLayout.lineCount - 1)
+        val offset = editorLayout.getOffsetForHorizontal(line, contentX).coerceIn(0, editable.length)
+        setSelection(offset)
     }
 
 
