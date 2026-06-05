@@ -207,6 +207,24 @@ fun applyFontSize(
     }
 }
 
+fun pastePlainTextMatchingDestinationFormatting(
+    editable: Editable,
+    selectionStart: Int,
+    selectionEnd: Int,
+    pastedText: String
+): Int {
+    if (pastedText.isEmpty()) return selectionStart.coerceIn(0, editable.length)
+    val (start, end) = normalizeRange(selectionStart, selectionEnd, editable.length)
+    val destinationSpans = destinationFormattingSpans(editable, start)
+    editable.replace(start, end, pastedText)
+    val pastedEnd = start + pastedText.length
+    removeUserFormattingSpans(editable, start, pastedEnd)
+    destinationSpans.forEach { span ->
+        editable.setSpan(span, start, pastedEnd, Spanned.SPAN_EXCLUSIVE_INCLUSIVE)
+    }
+    return pastedEnd
+}
+
 fun applyRichTextFormatting(editable: Editable, paragraphSpacingPx: Int = 0) {
     normalizeLegacyChecklistPrefixes(editable)
     
@@ -733,6 +751,51 @@ private fun colorAt(editable: Editable, index: Int, defaultColor: Int): Int {
 private fun fontSizeAt(editable: Editable, index: Int, defaultSizeSp: Int): Int {
     val spans = editable.getSpans(index, index, AbsoluteSizeSpan::class.java)
     return spans.lastOrNull()?.let { if (it.dip) it.size else defaultSizeSp } ?: defaultSizeSp
+}
+
+private fun destinationFormattingSpans(editable: Editable, start: Int): List<Any> {
+    if (editable.isEmpty()) return emptyList()
+    val probe = when {
+        start < editable.length -> start
+        else -> editable.length - 1
+    }
+    return buildList {
+        editable.getSpans(probe, probe, StyleSpan::class.java).forEach { span ->
+            add(StyleSpan(span.style))
+        }
+        editable.getSpans(probe, probe, UnderlineSpan::class.java).forEach {
+            add(UnderlineSpan())
+        }
+        editable.getSpans(probe, probe, StrikethroughSpan::class.java).forEach { span ->
+            if (span !is ChecklistStrikeThroughSpan) {
+                add(StrikethroughSpan())
+            }
+        }
+        editable.getSpans(probe, probe, ForegroundColorSpan::class.java).lastOrNull()?.let { span ->
+            add(ForegroundColorSpan(span.foregroundColor))
+        }
+        editable.getSpans(probe, probe, AbsoluteSizeSpan::class.java).lastOrNull()?.let { span ->
+            add(AbsoluteSizeSpan(span.size, span.dip))
+        }
+    }
+}
+
+private fun removeUserFormattingSpans(editable: Editable, start: Int, end: Int) {
+    listOf(
+        StyleSpan::class.java,
+        UnderlineSpan::class.java,
+        StrikethroughSpan::class.java,
+        ForegroundColorSpan::class.java,
+        AbsoluteSizeSpan::class.java
+    ).forEach { clazz ->
+        editable.getSpans(start, end, clazz).forEach { span ->
+            val spanStart = editable.getSpanStart(span)
+            val spanEnd = editable.getSpanEnd(span)
+            if (spanStart >= start && spanEnd <= end) {
+                editable.removeSpan(span)
+            }
+        }
+    }
 }
 
 private fun <T> removeSpanFromRange(

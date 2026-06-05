@@ -277,6 +277,7 @@ private fun RichTextActionBars(
 ) {
     var sizeMenuExpanded by remember { mutableStateOf(false) }
     var historyMenuExpanded by remember { mutableStateOf(false) }
+    var pasteMenuExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier,
@@ -416,7 +417,33 @@ private fun RichTextActionBars(
             }
             ToggleFormatIcon(icon = Icons.Filled.ContentCut, label = "Cut", selected = false, onClick = { actions?.cutSelection() })
             ToggleFormatIcon(icon = Icons.Filled.ContentCopy, label = "Copy", selected = false, onClick = { actions?.copySelection() })
-            ToggleFormatIcon(icon = Icons.Filled.ContentPaste, label = "Paste", selected = false, onClick = { actions?.pasteClipboard() })
+            Box {
+                ToggleFormatIcon(
+                    icon = Icons.Filled.ContentPaste,
+                    label = "Paste",
+                    selected = false,
+                    onClick = { pasteMenuExpanded = true }
+                )
+                DropdownMenu(
+                    expanded = pasteMenuExpanded,
+                    onDismissRequest = { pasteMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Paste") },
+                        onClick = {
+                            pasteMenuExpanded = false
+                            actions?.pasteClipboard()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Paste and Match Destination Formatting") },
+                        onClick = {
+                            pasteMenuExpanded = false
+                            actions?.pasteClipboardMatchingDestinationFormatting()
+                        }
+                    )
+                }
+            }
             ToggleFormatIcon(icon = Icons.Filled.SelectAll, label = "Select all", selected = false, onClick = { actions?.toggleSelectAll() })
             ToggleFormatIcon(icon = Icons.Filled.CheckBox, label = "Checklist", selected = false, onClick = { actions?.toggleChecklistItem() })
             ToggleFormatIcon(

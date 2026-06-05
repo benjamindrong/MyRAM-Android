@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.text.Editable
+import android.text.Html
 import android.text.InputType
 import android.text.NoCopySpan
 import android.text.SpannableStringBuilder
@@ -100,6 +101,10 @@ internal class RichTextEditorActions(
         editorProvider()?.pasteClipboard()
     }
 
+    fun pasteClipboardMatchingDestinationFormatting() {
+        editorProvider()?.pasteClipboardMatchingDestinationFormatting()
+    }
+
     fun toggleSelectAll() {
         editorProvider()?.toggleSelectAll()
     }
@@ -187,6 +192,7 @@ internal interface RichTextEditorBinding {
     fun copySelection()
     fun cutSelection()
     fun pasteClipboard()
+    fun pasteClipboardMatchingDestinationFormatting()
     fun toggleChecklistItem()
     fun toggleSelectAll()
     fun pinSelection(): PinnedEditorSelection?
@@ -449,15 +455,31 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
 
     override fun pasteClipboard() {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-        val clip = clipboard.primaryClip ?: return
-        val pasted = clip.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+        val pasted = clipboard.primaryClip?.firstStyledText() ?: return
         if (pasted.isEmpty()) return
         val editable = text ?: return
         val start = minOf(selectionStart, selectionEnd).coerceIn(0, editable.length)
         val end = maxOf(selectionStart, selectionEnd).coerceIn(0, editable.length)
-        editable.replace(start, end, pasted)
-        val cursor = (start + pasted.length).coerceAtMost(editable.length)
+        suppressCallbacks = true
+        val cursor = pasteStyledClipboardContent(editable, start, end, pasted)
+        suppressCallbacks = false
+        applyRichTextFormatting(editable, paragraphSpacingPx)
         setSelection(cursor)
+        publishChanges()
+    }
+
+    override fun pasteClipboardMatchingDestinationFormatting() {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        val pasted = clipboard.primaryClip?.firstPlainText().orEmpty()
+        if (pasted.isEmpty()) return
+        val editable = text ?: return
+        val start = minOf(selectionStart, selectionEnd).coerceIn(0, editable.length)
+        val end = maxOf(selectionStart, selectionEnd).coerceIn(0, editable.length)
+        suppressCallbacks = true
+        val cursor = pastePlainTextMatchingDestinationFormatting(editable, start, end, pasted)
+        suppressCallbacks = false
+        applyRichTextFormatting(editable, paragraphSpacingPx)
+        setSelection(cursor.coerceAtMost(editable.length))
         publishChanges()
     }
 
@@ -560,6 +582,22 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         copySourceSpans(decoded, editable, contentStart)
     }
 
+    private fun pasteStyledClipboardContent(
+        editable: Editable,
+        start: Int,
+        end: Int,
+        pasted: CharSequence
+    ): Int {
+        editable.delete(start, end)
+        editable.insert(start, pasted.toString())
+        val contentEnd = start + pasted.length
+        trimInheritedSpans(editable, start, contentEnd)
+        if (pasted is Spanned) {
+            copySourceSpans(pasted, editable, start)
+        }
+        return contentEnd.coerceAtMost(editable.length)
+    }
+
     private fun trimInheritedSpans(editable: Editable, start: Int, end: Int) {
         editable.getSpans(start, end, Any::class.java).forEach { span ->
             if (span is NoCopySpan) return@forEach
@@ -650,6 +688,38 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
 }
 
 internal data class SelectionTarget(val start: Int, val end: Int)
+
+internal fun ClipData.firstStyledText(): CharSequence? {
+    for (index in 0 until itemCount) {
+        val item = getItemAt(index) ?: continue
+        val text = item.text
+        if (text is Spanned && text.isNotEmpty()) return text
+
+        val htmlText = item.htmlText
+        if (!htmlText.isNullOrEmpty()) {
+            val styledText = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                Html.fromHtml(htmlText, Html.FROM_HTML_MODE_LEGACY)
+            } else {
+                @Suppress("DEPRECATION")
+                Html.fromHtml(htmlText)
+            }
+            if (styledText.isNotEmpty()) return styledText
+        }
+
+        if (!text.isNullOrEmpty()) return text
+
+        val uriText = item.uri?.toString()
+        if (!uriText.isNullOrEmpty()) return uriText
+
+        val intentText = item.intent?.toUri(0)
+        if (!intentText.isNullOrEmpty()) return intentText
+    }
+    return null
+}
+
+internal fun ClipData.firstPlainText(): String? {
+    return firstStyledText()?.toString()
+}
 
 internal fun toggleSelectAllRange(length: Int, selectionStart: Int, selectionEnd: Int): SelectionTarget {
     if (length <= 0) return SelectionTarget(0, 0)
