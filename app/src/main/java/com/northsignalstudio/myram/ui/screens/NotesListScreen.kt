@@ -78,8 +78,6 @@ import com.northsignalstudio.myram.ui.theme.AppearanceSetting
 import com.northsignalstudio.myram.ui.theme.EditorChromeStyle
 import com.northsignalstudio.myram.debug.DebugDemoDataGenerator
 
-private val pinnedHighlightColor = Color(0xFFFAB942)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotesListScreen(
@@ -1216,13 +1214,13 @@ private fun PinnedPreviewText(
     Surface(
         modifier = modifier,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-        color = pinnedHighlightColor
+        color = PinnedHighlightPalette.Highlight
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = PinnedHighlightPalette.Text,
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis
         )

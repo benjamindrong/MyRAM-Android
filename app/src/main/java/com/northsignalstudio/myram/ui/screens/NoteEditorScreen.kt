@@ -124,8 +124,6 @@ private val editorColorSwatches = listOf(
     Color(0xFF6D28D9)
 )
 
-private val pinnedHighlightColor = Color(0xFFFAB942)
-
 @Composable
 private fun AttachmentThumbnail(
     attachment: NotePhotoAttachment,
@@ -1234,15 +1232,15 @@ private fun PinnedTextSection(
                         .padding(start = 8.dp, end = 8.dp, bottom = 6.dp)
                         .testTag("pinned-text-collapsed-preview"),
                     shape = RoundedCornerShape(8.dp),
-                    color = pinnedHighlightColor
+                    color = PinnedHighlightPalette.Highlight
                 ) {
                     Text(
                         text = preview,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                         color = if (preview == "Pinned") {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            PinnedHighlightPalette.PlaceholderText
                         } else {
-                            MaterialTheme.colorScheme.onSurface
+                            PinnedHighlightPalette.Text
                         },
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     )
@@ -1281,7 +1279,9 @@ private fun PinnedTextRow(
                 onClick = { editing = true },
                 onLongClick = { menuExpanded = true }
             )
-            .testTag("pinned-text-row"),
+            .testTag("pinned-text-row")
+            .background(PinnedHighlightPalette.Highlight, RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -1337,9 +1337,9 @@ private fun PinnedTextRow(
                     .padding(vertical = 8.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (pinnedText.text.isBlank()) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                    PinnedHighlightPalette.PlaceholderText
                 } else {
-                    MaterialTheme.colorScheme.onSurface
+                    PinnedHighlightPalette.Text
                 },
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
@@ -1348,7 +1348,7 @@ private fun PinnedTextRow(
                 Icons.Filled.Edit,
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = PinnedHighlightPalette.PlaceholderText
             )
         }
 
@@ -1389,7 +1389,7 @@ private fun ReorderGripDots(modifier: Modifier = Modifier) {
                     Surface(
                         modifier = Modifier.size(4.dp),
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                        color = PinnedHighlightPalette.PlaceholderText
                     ) {}
                 }
             }
