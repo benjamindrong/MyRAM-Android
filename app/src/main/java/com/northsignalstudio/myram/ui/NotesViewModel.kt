@@ -39,6 +39,7 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
     private val recentlyDeletedRetentionMillis = 7L * 24 * 60 * 60 * 1000
     val repo = Repository.get(getApplication())
     private val noteIntelligenceService = NoteIntelligenceService(app)
+    private val pinnedTextExpansionSessionState = PinnedTextExpansionSessionState()
 
     private val _currentFolderId = MutableStateFlow<Int?>(null)
     val currentFolderId: StateFlow<Int?> = _currentFolderId.asStateFlow()
@@ -492,6 +493,14 @@ class NotesViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun isPinnedTextSectionExpanded(noteId: Int?): Boolean {
+        return pinnedTextExpansionSessionState.isExpanded(noteId)
+    }
+
+    fun setPinnedTextSectionExpanded(noteId: Int?, isExpanded: Boolean) {
+        pinnedTextExpansionSessionState.setExpanded(noteId, isExpanded)
+    }
+
     fun addPinnedText(
         note: Note,
         text: String = "",
@@ -939,4 +948,17 @@ data class ShareableExport(
 
 internal fun List<PinnedText>.sortedPinnedText(): List<PinnedText> {
     return sortedWith(compareBy<PinnedText> { it.sortOrder }.thenBy { it.createdAt })
+}
+
+internal class PinnedTextExpansionSessionState {
+    private val expandedByNoteId = mutableMapOf<Int, Boolean>()
+
+    fun isExpanded(noteId: Int?): Boolean {
+        return noteId?.let { expandedByNoteId[it] } ?: false
+    }
+
+    fun setExpanded(noteId: Int?, isExpanded: Boolean) {
+        if (noteId == null || noteId == 0) return
+        expandedByNoteId[noteId] = isExpanded
+    }
 }

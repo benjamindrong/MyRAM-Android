@@ -484,7 +484,7 @@ fun NoteEditorScreen(
     var showingCreateFolderPrompt by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     var areAttachmentsExpanded by remember(note?.id) { mutableStateOf(false) }
-    var arePinnedExpanded by remember(note?.id) { mutableStateOf(true) }
+    var arePinnedExpanded by remember(note?.id) { mutableStateOf(vm.isPinnedTextSectionExpanded(note?.id)) }
     var expandedAttachmentId by remember(note?.id) { mutableStateOf<Long?>(null) }
     var previousAttachmentCount by remember(note?.id) { mutableIntStateOf(0) }
     var showingTitleEditor by remember(note?.id) { mutableStateOf(false) }
@@ -655,8 +655,8 @@ fun NoteEditorScreen(
         }
     }
 
-    LaunchedEffect(note?.id, pinnedTextItems.size) {
-        arePinnedExpanded = pinnedTextItems.size <= 3
+    LaunchedEffect(note?.id) {
+        arePinnedExpanded = vm.isPinnedTextSectionExpanded(note?.id)
     }
 
     LaunchedEffect(note?.id, title.text, plainContent) {
@@ -930,10 +930,14 @@ fun NoteEditorScreen(
                 PinnedTextSection(
                     pinnedTextItems = pinnedTextItems,
                     expanded = arePinnedExpanded,
-                    onExpandedChanged = { arePinnedExpanded = it },
+                    onExpandedChanged = {
+                        arePinnedExpanded = it
+                        vm.setPinnedTextSectionExpanded(note?.id, it)
+                    },
                     onAdd = {
                         note?.let { current ->
                             arePinnedExpanded = true
+                            vm.setPinnedTextSectionExpanded(current.id, true)
                             vm.addPinnedText(current)
                         }
                     },
@@ -1004,6 +1008,7 @@ fun NoteEditorScreen(
                         if (selection != null) {
                             note?.let { current ->
                                 arePinnedExpanded = true
+                                vm.setPinnedTextSectionExpanded(current.id, true)
                                 redoHistory = emptyList()
                                 undoHistory = (undoHistory + before).takeLast(200)
                                 vm.addPinnedText(
