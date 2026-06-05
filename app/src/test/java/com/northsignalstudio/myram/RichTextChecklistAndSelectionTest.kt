@@ -3,7 +3,9 @@ package com.northsignalstudio.myram
 import com.northsignalstudio.myram.ui.richtext.CHECKLIST_CHECKED_PREFIX
 import com.northsignalstudio.myram.ui.richtext.CHECKLIST_UNCHECKED_PREFIX
 import com.northsignalstudio.myram.ui.richtext.checkedChecklistContentRanges
+import com.northsignalstudio.myram.ui.richtext.checklistIconContentOffset
 import com.northsignalstudio.myram.ui.richtext.checklistIconRangeContainingOffset
+import com.northsignalstudio.myram.ui.richtext.checklistIconLayoutY
 import com.northsignalstudio.myram.ui.richtext.isChecklistIconAtOffset
 import com.northsignalstudio.myram.ui.richtext.pinCandidateInText
 import com.northsignalstudio.myram.ui.richtext.toggleChecklistInText
@@ -139,6 +141,27 @@ class RichTextChecklistAndSelectionTest {
         assertEquals(
             "${CHECKLIST_UNCHECKED_PREFIX}Follow up on pinned thought\n",
             text.substring(candidate.sourceStart, candidate.sourceEnd)
+        )
+    }
+
+    @Test
+    fun checklistIconLayoutY_matchesTextLayoutCoordinates() {
+        val iconY = checklistIconLayoutY(
+            totalPaddingTop = 12f,
+            lineBaseline = 120f,
+            alignmentOffset = -2f
+        )
+
+        assertEquals(130f, iconY, 0.001f)
+    }
+
+    @Test
+    fun checklistIconContentOffset_usesFirstVisibleCharacterAfterPrefix() {
+        val text = "${CHECKLIST_UNCHECKED_PREFIX}LongUnbrokenChecklistText"
+
+        assertEquals(
+            CHECKLIST_UNCHECKED_PREFIX.length,
+            checklistIconContentOffset(CHECKLIST_UNCHECKED_PREFIX.length, text.length)
         )
     }
 

@@ -24,6 +24,7 @@ import androidx.appcompat.widget.AppCompatEditText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
@@ -146,7 +147,7 @@ internal fun RichTextEditor(
     actionsSink(actions)
 
     AndroidView(
-        modifier = modifier,
+        modifier = modifier.clipToBounds(),
         factory = { context ->
             FormattingEditText(context).apply {
                 setTextColor(contentTextColor.toArgb())
@@ -346,7 +347,7 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         setPadding(
             baseLeftPaddingPx + gutter,
             baseTopPaddingPx,
-            baseRightPaddingPx,
+            baseRightPaddingPx + gutter,
             bottomPaddingPx
         )
     }
@@ -372,20 +373,35 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         val alignmentOffset = textCenter - iconCenter
 
         val gutterCenterX = scrollX + baseLeftPaddingPx + checklistGutterWidthPx / 2f
-        checklistIconRanges(content).forEach { range ->
-            if (range.start >= editable.length) return@forEach
-            val line = editorLayout.getLineForOffset(range.start)
-            val lineBaseline = editorLayout.getLineBaseline(line).toFloat()
-            val icon = when {
-                content.startsWith(CHECKLIST_CHECKED_PREFIX, range.start) -> CHECKLIST_CHECKED_PREFIX.trim()
-                else -> CHECKLIST_UNCHECKED_PREFIX.trim()
+        val saveCount = canvas.save()
+        canvas.clipRect(scrollX, 0, scrollX + width, height)
+        try {
+            checklistIconRanges(content).forEach { range ->
+                if (range.start >= editable.length) return@forEach
+                val contentOffset = checklistIconContentOffset(range.end, editable.length)
+                val line = editorLayout.getLineForOffset(contentOffset)
+                val lineBaseline = editorLayout.getLineBaseline(line).toFloat()
+                val iconY = checklistIconLayoutY(
+                    totalPaddingTop = totalPaddingTop.toFloat(),
+                    lineBaseline = lineBaseline,
+                    alignmentOffset = alignmentOffset
+                )
+                if (iconY + iconMetrics.ascent > height || iconY + iconMetrics.descent < 0) {
+                    return@forEach
+                }
+                val icon = when {
+                    content.startsWith(CHECKLIST_CHECKED_PREFIX, range.start) -> CHECKLIST_CHECKED_PREFIX.trim()
+                    else -> CHECKLIST_UNCHECKED_PREFIX.trim()
+                }
+                canvas.drawText(
+                    icon,
+                    gutterCenterX,
+                    iconY,
+                    checklistIconPaint
+                )
             }
-            canvas.drawText(
-                icon,
-                gutterCenterX,
-                totalPaddingTop + lineBaseline + alignmentOffset,
-                checklistIconPaint
-            )
+        } finally {
+            canvas.restoreToCount(saveCount)
         }
     }
 
@@ -714,6 +730,17 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
             }
             .start()
     }
+}
+
+internal fun checklistIconLayoutY(
+    totalPaddingTop: Float,
+    lineBaseline: Float,
+    alignmentOffset: Float
+): Float = totalPaddingTop + lineBaseline + alignmentOffset
+
+internal fun checklistIconContentOffset(prefixEnd: Int, textLength: Int): Int {
+    if (textLength <= 0) return 0
+    return prefixEnd.coerceIn(0, textLength - 1)
 }
 
 internal data class SelectionTarget(val start: Int, val end: Int)
