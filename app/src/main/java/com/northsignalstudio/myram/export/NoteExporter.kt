@@ -3,6 +3,7 @@ package com.northsignalstudio.myram.export
 import com.northsignalstudio.myram.data.Note
 import com.northsignalstudio.myram.data.NotePhotoAttachment
 import com.northsignalstudio.myram.data.PinnedText
+import com.northsignalstudio.myram.ui.richtext.plainTextFromStoredContent
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -36,6 +37,12 @@ object NoteExporter {
         attachmentsDirectory.mkdirs()
 
         val exportedFiles = mutableListOf<File>()
+        writeNoteTextFiles(
+            notes = activeNotes,
+            pinnedTextByNoteId = pinnedTextByNoteId,
+            batchDirectory = batchDirectory,
+            exportedFiles = exportedFiles
+        )
         val notesJson = buildNotesJson(
             notes = activeNotes,
             exportedAtMillis = nowMillis,
@@ -50,9 +57,54 @@ object NoteExporter {
         jsonFile.writeText(notesJson, Charsets.UTF_8)
 
         return ExportArtifact(
-            files = listOf(jsonFile) + exportedFiles,
+            files = listOf(jsonFile) + exportedFiles.sortedBy { it.relativeTo(batchDirectory).path },
             mimeType = "*/*"
         )
+    }
+
+    private fun writeNoteTextFiles(
+        notes: List<Note>,
+        pinnedTextByNoteId: Map<Int, List<PinnedText>>,
+        batchDirectory: File,
+        exportedFiles: MutableList<File>
+    ) {
+        val usedFilenames = mutableSetOf<String>()
+        notes.forEachIndexed { index, note ->
+            val baseName = safePathSegment(note.title.ifBlank { "Note-${index + 1}" })
+            val filename = "${uniqueFilename(baseName, usedFilenames)}.txt"
+            val textFile = File(batchDirectory, filename)
+            textFile.writeText(
+                buildNoteText(
+                    note = note,
+                    pinnedText = pinnedTextByNoteId[note.id].orEmpty()
+                ),
+                Charsets.UTF_8
+            )
+            exportedFiles += textFile
+        }
+    }
+
+    private fun buildNoteText(note: Note, pinnedText: List<PinnedText>): String {
+        val title = note.title.trim().ifBlank { "Untitled" }
+        val body = plainTextFromStoredContent(note.content).ifBlank { "(No content)" }
+        val pinnedLines = pinnedText
+            .sortedWith(compareBy<PinnedText> { it.sortOrder }.thenBy { it.createdAt })
+            .map { it.text.trim() }
+            .filter { it.isNotEmpty() }
+
+        return buildString {
+            appendLine("Title: $title")
+            appendLine()
+            appendLine("Pinned:")
+            if (pinnedLines.isEmpty()) {
+                appendLine("(None)")
+            } else {
+                pinnedLines.forEach { appendLine("- $it") }
+            }
+            appendLine()
+            appendLine("Content:")
+            appendLine(body)
+        }.trimEnd() + "\n"
     }
 
     private fun buildNotesJson(
@@ -168,6 +220,15 @@ object NoteExporter {
             .trim('-')
             .take(40)
         return if (cleaned.isBlank()) "item" else cleaned
+    }
+
+    private fun uniqueFilename(baseName: String, used: MutableSet<String>): String {
+        if (used.add(baseName)) return baseName
+        var index = 2
+        while (!used.add("$baseName-$index")) {
+            index += 1
+        }
+        return "$baseName-$index"
     }
 
     private fun detectMimeType(data: ByteArray): String {
