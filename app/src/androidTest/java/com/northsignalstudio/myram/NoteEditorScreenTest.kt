@@ -1,5 +1,6 @@
 package com.northsignalstudio.myram
 
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -11,6 +12,13 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.test.espresso.Espresso.pressBack
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.replaceText
+import androidx.test.espresso.action.ViewActions.swipeUp
+import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.hasFocus
+import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -67,6 +75,37 @@ class NoteEditorScreenTest {
             composeRule.onAllNodesWithText("Optional recommendations")
                 .fetchSemanticsNodes().isEmpty()
         )
+    }
+
+    @Test
+    fun noteEditor_tapPlacesCursorForTyping() {
+        openNewNote()
+
+        onView(isAssignableFrom(AppCompatEditText::class.java))
+            .perform(click())
+            .check(matches(hasFocus()))
+            .check { view, _ ->
+                val editor = view as AppCompatEditText
+                assertTrue(editor.selectionStart >= 0)
+                assertTrue(editor.selectionEnd >= 0)
+            }
+    }
+
+    @Test
+    fun longNoteEditor_acceptsFocusAndScrollGesture() {
+        openNewNote()
+
+        val longNote = (1..80).joinToString(separator = "\n") { line ->
+            "Line $line of a long note"
+        }
+
+        onView(isAssignableFrom(AppCompatEditText::class.java))
+            .perform(click(), replaceText(longNote))
+            .check(matches(hasFocus()))
+
+        onView(isAssignableFrom(AppCompatEditText::class.java))
+            .perform(swipeUp())
+            .check(matches(hasFocus()))
     }
 
     @Test

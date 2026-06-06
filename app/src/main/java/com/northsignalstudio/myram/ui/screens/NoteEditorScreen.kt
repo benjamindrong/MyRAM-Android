@@ -29,6 +29,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -93,6 +96,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
@@ -187,6 +191,7 @@ private fun AttachmentThumbnail(
 @Composable
 private fun AttachmentViewerDialog(
     attachment: NotePhotoAttachment,
+    onRecognizeText: suspend (NotePhotoAttachment) -> String,
     onDismiss: () -> Unit
 ) {
     val imageBitmap = remember(attachment.id) {
@@ -200,6 +205,9 @@ private fun AttachmentViewerDialog(
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
+    var recognizedText by remember(attachment.id) { mutableStateOf<String?>(null) }
+    var isRecognizingText by remember(attachment.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
@@ -239,6 +247,56 @@ private fun AttachmentViewerDialog(
                 }
             }
 
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Recognized Text",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            enabled = !isRecognizingText,
+                            onClick = {
+                                scope.launch {
+                                    isRecognizingText = true
+                                    recognizedText = runCatching {
+                                        onRecognizeText(attachment).trim()
+                                    }.getOrElse {
+                                        "Text recognition failed."
+                                    }
+                                    isRecognizingText = false
+                                }
+                            }
+                        ) {
+                            Text(if (isRecognizingText) "Recognizing..." else "Recognize text")
+                        }
+                    }
+
+                    val text = recognizedText
+                    if (text != null) {
+                        Spacer(Modifier.height(8.dp))
+                        SelectionContainer {
+                            Text(
+                                text = text.ifBlank { "No text found." },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(140.dp)
+                                    .verticalScroll(rememberScrollState())
+                            )
+                        }
+                    }
+                }
+            }
+
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -274,6 +332,7 @@ private fun RichTextActionBars(
 ) {
     var sizeMenuExpanded by remember { mutableStateOf(false) }
     var historyMenuExpanded by remember { mutableStateOf(false) }
+    var pasteMenuExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier,
@@ -413,7 +472,33 @@ private fun RichTextActionBars(
             }
             ToggleFormatIcon(icon = Icons.Filled.ContentCut, label = "Cut", selected = false, onClick = { actions?.cutSelection() })
             ToggleFormatIcon(icon = Icons.Filled.ContentCopy, label = "Copy", selected = false, onClick = { actions?.copySelection() })
-            ToggleFormatIcon(icon = Icons.Filled.ContentPaste, label = "Paste", selected = false, onClick = { actions?.pasteClipboard() })
+            Box {
+                ToggleFormatIcon(
+                    icon = Icons.Filled.ContentPaste,
+                    label = "Paste",
+                    selected = false,
+                    onClick = { pasteMenuExpanded = true }
+                )
+                DropdownMenu(
+                    expanded = pasteMenuExpanded,
+                    onDismissRequest = { pasteMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Paste") },
+                        onClick = {
+                            pasteMenuExpanded = false
+                            actions?.pasteClipboard()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Paste and Match Destination Formatting") },
+                        onClick = {
+                            pasteMenuExpanded = false
+                            actions?.pasteClipboardMatchingDestinationFormatting()
+                        }
+                    )
+                }
+            }
             ToggleFormatIcon(icon = Icons.Filled.SelectAll, label = "Select all", selected = false, onClick = { actions?.toggleSelectAll() })
             ToggleFormatIcon(icon = Icons.Filled.CheckBox, label = "Checklist", selected = false, onClick = { actions?.toggleChecklistItem() })
             ToggleFormatIcon(
@@ -481,7 +566,7 @@ fun NoteEditorScreen(
     var showingCreateFolderPrompt by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     var areAttachmentsExpanded by remember(note?.id) { mutableStateOf(false) }
-    var arePinnedExpanded by remember(note?.id) { mutableStateOf(true) }
+    var arePinnedExpanded by remember(note?.id) { mutableStateOf(vm.isPinnedTextSectionExpanded(note?.id)) }
     var expandedAttachmentId by remember(note?.id) { mutableStateOf<Long?>(null) }
     var previousAttachmentCount by remember(note?.id) { mutableIntStateOf(0) }
     var showingTitleEditor by remember(note?.id) { mutableStateOf(false) }
@@ -652,8 +737,8 @@ fun NoteEditorScreen(
         }
     }
 
-    LaunchedEffect(note?.id, pinnedTextItems.size) {
-        arePinnedExpanded = pinnedTextItems.size <= 3
+    LaunchedEffect(note?.id) {
+        arePinnedExpanded = vm.isPinnedTextSectionExpanded(note?.id)
     }
 
     LaunchedEffect(note?.id, title.text, plainContent) {
@@ -873,12 +958,6 @@ fun NoteEditorScreen(
                                 )
                             }
                             DropdownMenuItem(
-                                text = { Text("Attachments") },
-                                onClick = {
-                                    isAttachmentMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
                                 text = { Text("Photo Library") },
                                 onClick = {
                                     isAttachmentMenuExpanded = false
@@ -927,10 +1006,14 @@ fun NoteEditorScreen(
                 PinnedTextSection(
                     pinnedTextItems = pinnedTextItems,
                     expanded = arePinnedExpanded,
-                    onExpandedChanged = { arePinnedExpanded = it },
+                    onExpandedChanged = {
+                        arePinnedExpanded = it
+                        vm.setPinnedTextSectionExpanded(note?.id, it)
+                    },
                     onAdd = {
                         note?.let { current ->
                             arePinnedExpanded = true
+                            vm.setPinnedTextSectionExpanded(current.id, true)
                             vm.addPinnedText(current)
                         }
                     },
@@ -943,7 +1026,8 @@ fun NoteEditorScreen(
                         redoHistory = emptyList()
                         undoHistory = (undoHistory + before).takeLast(200)
                         vm.unpinText(pinnedText)
-                    }
+                    },
+                    onDelete = vm::deletePinnedParagraph
                 )
 
                 RichTextEditor(
@@ -1000,6 +1084,7 @@ fun NoteEditorScreen(
                         if (selection != null) {
                             note?.let { current ->
                                 arePinnedExpanded = true
+                                vm.setPinnedTextSectionExpanded(current.id, true)
                                 redoHistory = emptyList()
                                 undoHistory = (undoHistory + before).takeLast(200)
                                 vm.addPinnedText(
@@ -1074,6 +1159,7 @@ fun NoteEditorScreen(
     if (expandedAttachment != null) {
         AttachmentViewerDialog(
             attachment = expandedAttachment,
+            onRecognizeText = vm::recognizeAttachmentText,
             onDismiss = { expandedAttachmentId = null }
         )
     }
@@ -1087,7 +1173,8 @@ private fun PinnedTextSection(
     onAdd: () -> Unit,
     onUpdate: (PinnedText, String) -> Unit,
     onMove: (PinnedText, Int) -> Unit,
-    onUnpin: (PinnedText) -> Unit
+    onUnpin: (PinnedText) -> Unit,
+    onDelete: (PinnedText) -> Unit
 ) {
     var activeDragId by remember { mutableStateOf<Long?>(null) }
     var activeDragOffsetY by remember { mutableFloatStateOf(0f) }
@@ -1180,7 +1267,8 @@ private fun PinnedTextSection(
                                 activeDragOffsetY = 0f
                                 pendingInsertionIndex = null
                             },
-                            onUnpin = onUnpin
+                            onUnpin = onUnpin,
+                            onDelete = onDelete
                         )
                         if (pendingInsertionIndex == index + 1) {
                             ReorderInsertionIndicator()
@@ -1189,20 +1277,26 @@ private fun PinnedTextSection(
                 }
             } else {
                 val preview = pinnedTextItems.firstOrNull()?.text
-                    ?.lineSequence()
-                    ?.firstOrNull()
                     ?.ifBlank { "Pinned" }
                     ?: "Pinned"
-                Text(
-                    text = preview,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Surface(
                     modifier = Modifier
                         .padding(start = 8.dp, end = 8.dp, bottom = 6.dp)
-                        .testTag("pinned-text-collapsed-preview")
-                )
+                        .testTag("pinned-text-collapsed-preview"),
+                    shape = RoundedCornerShape(8.dp),
+                    color = PinnedHighlightPalette.Highlight
+                ) {
+                    Text(
+                        text = preview,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        color = if (preview == "Pinned") {
+                            PinnedHighlightPalette.PlaceholderText
+                        } else {
+                            PinnedHighlightPalette.Text
+                        },
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
     }
@@ -1219,7 +1313,8 @@ private fun PinnedTextRow(
     onMove: (PinnedText, Int) -> Unit,
     onDragChanged: (PinnedText, Float) -> Unit,
     onDragCancelled: () -> Unit,
-    onUnpin: (PinnedText) -> Unit
+    onUnpin: (PinnedText) -> Unit,
+    onDelete: (PinnedText) -> Unit
 ) {
     var draft by remember(pinnedText.id, pinnedText.text) { mutableStateOf(pinnedText.text) }
     var editing by remember(pinnedText.id) { mutableStateOf(false) }
@@ -1236,7 +1331,9 @@ private fun PinnedTextRow(
                 onClick = { editing = true },
                 onLongClick = { menuExpanded = true }
             )
-            .testTag("pinned-text-row"),
+            .testTag("pinned-text-row")
+            .background(PinnedHighlightPalette.Highlight, RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -1292,9 +1389,9 @@ private fun PinnedTextRow(
                     .padding(vertical = 8.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (pinnedText.text.isBlank()) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                    PinnedHighlightPalette.PlaceholderText
                 } else {
-                    MaterialTheme.colorScheme.onSurface
+                    PinnedHighlightPalette.Text
                 },
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
@@ -1303,7 +1400,7 @@ private fun PinnedTextRow(
                 Icons.Filled.Edit,
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = PinnedHighlightPalette.PlaceholderText
             )
         }
 
@@ -1317,6 +1414,13 @@ private fun PinnedTextRow(
                     onClick = {
                         menuExpanded = false
                         onUnpin(pinnedText)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete") },
+                    onClick = {
+                        menuExpanded = false
+                        onDelete(pinnedText)
                     }
                 )
             }
@@ -1337,7 +1441,7 @@ private fun ReorderGripDots(modifier: Modifier = Modifier) {
                     Surface(
                         modifier = Modifier.size(4.dp),
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                        color = PinnedHighlightPalette.PlaceholderText
                     ) {}
                 }
             }

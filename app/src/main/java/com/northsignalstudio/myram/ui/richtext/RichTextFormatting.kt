@@ -1,9 +1,12 @@
 package com.northsignalstudio.myram.ui.richtext
 
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Editable
 import android.text.Spanned
 import android.text.style.AbsoluteSizeSpan
+import android.text.style.LineHeightSpan
+import android.text.style.ReplacementSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
@@ -22,6 +25,7 @@ data class RichTextFormatState(
 
 internal const val CHECKLIST_UNCHECKED_PREFIX = "☐ "
 internal const val CHECKLIST_CHECKED_PREFIX = "☑ "
+internal const val CHECKLIST_ICON_SIZE_SP = 28
 private const val CHECKLIST_CHECKED_PREFIX_VARIANT = "☑︎ "
 private const val LEGACY_CHECKLIST_UNCHECKED_PREFIX = "- [ ] "
 private const val LEGACY_CHECKLIST_CHECKED_PREFIX = "- [x] "
@@ -37,6 +41,13 @@ internal data class ChecklistTextUpdate(
     val text: String,
     val selectionStart: Int,
     val selectionEnd: Int
+)
+
+internal data class PinTextCandidate(
+    val textStart: Int,
+    val textEnd: Int,
+    val sourceStart: Int,
+    val sourceEnd: Int
 )
 
 internal data class ChecklistContentRange(
@@ -196,10 +207,45 @@ fun applyFontSize(
     }
 }
 
-fun applyChecklistStrikeThrough(editable: Editable) {
+fun pastePlainTextMatchingDestinationFormatting(
+    editable: Editable,
+    selectionStart: Int,
+    selectionEnd: Int,
+    pastedText: String
+): Int {
+    if (pastedText.isEmpty()) return selectionStart.coerceIn(0, editable.length)
+    val (start, end) = normalizeRange(selectionStart, selectionEnd, editable.length)
+    val destinationSpans = destinationFormattingSpans(editable, start)
+    editable.replace(start, end, pastedText)
+    val pastedEnd = start + pastedText.length
+    removeUserFormattingSpans(editable, start, pastedEnd)
+    destinationSpans.forEach { span ->
+        editable.setSpan(span, start, pastedEnd, Spanned.SPAN_EXCLUSIVE_INCLUSIVE)
+    }
+    return pastedEnd
+}
+
+fun applyRichTextFormatting(editable: Editable, paragraphSpacingPx: Int = 0) {
     normalizeLegacyChecklistPrefixes(editable)
-    val existing = editable.getSpans(0, editable.length, ChecklistStrikeThroughSpan::class.java)
-    existing.forEach(editable::removeSpan)
+    
+    // Clear existing spans we manage here
+    val classesToRemove = arrayOf(
+        ChecklistStrikeThroughSpan::class.java,
+        ChecklistControlPlaceholderSpan::class.java,
+        ParagraphSpacingSpan::class.java
+    )
+    classesToRemove.forEach { clazz ->
+        editable.getSpans(0, editable.length, clazz).forEach(editable::removeSpan)
+    }
+
+    if (paragraphSpacingPx > 0) {
+        editable.setSpan(
+            ParagraphSpacingSpan(paragraphSpacingPx),
+            0,
+            editable.length,
+            Spanned.SPAN_INCLUSIVE_INCLUSIVE
+        )
+    }
 
     checkedChecklistContentRanges(editable.toString()).forEach { range ->
         if (range.start < range.end) {
@@ -211,12 +257,22 @@ fun applyChecklistStrikeThrough(editable: Editable) {
             )
         }
     }
+
+    checklistIconRanges(editable.toString()).forEach { range ->
+        editable.setSpan(
+            ChecklistControlPlaceholderSpan(),
+            range.start,
+            range.end,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+    }
 }
 
 internal fun toggleChecklistAtSelection(
     editable: Editable,
     selectionStart: Int,
-    selectionEnd: Int
+    selectionEnd: Int,
+    paragraphSpacingPx: Int = 0
 ): ChecklistSelectionResult {
     val text = editable.toString()
     val length = text.length
@@ -270,7 +326,7 @@ internal fun toggleChecklistAtSelection(
     }
 
     editable.replace(replacement.start, replacement.end, replacement.replacement)
-    applyChecklistStrikeThrough(editable)
+    applyRichTextFormatting(editable, paragraphSpacingPx)
 
     val oldEnd = replacement.end
     val newEnd = replacement.start + replacement.replacement.length
@@ -363,6 +419,13 @@ internal fun toggleChecklistInText(
 internal fun isChecklistIconAtOffset(text: String, offset: Int): Boolean {
     if (text.isEmpty()) return false
     val safeOffset = offset.coerceIn(0, text.length - 1)
+    val range = checklistIconRangeContainingOffset(text, safeOffset) ?: return false
+    return safeOffset < range.end
+}
+
+internal fun checklistIconRangeContainingOffset(text: String, offset: Int): ChecklistContentRange? {
+    if (text.isEmpty()) return null
+    val safeOffset = offset.coerceIn(0, text.length - 1)
     val lineStart = text.lastIndexOf('\n', startIndex = (safeOffset - 1).coerceAtLeast(0))
         .let { if (it == -1) 0 else it + 1 }
     val lineEnd = text.indexOf('\n', startIndex = safeOffset).let { if (it == -1) text.length else it }
@@ -371,9 +434,9 @@ internal fun isChecklistIconAtOffset(text: String, offset: Int): Boolean {
         line.startsWith(CHECKLIST_UNCHECKED_PREFIX) -> CHECKLIST_UNCHECKED_PREFIX.length
         line.startsWith(CHECKLIST_CHECKED_PREFIX) -> CHECKLIST_CHECKED_PREFIX.length
         line.startsWith(CHECKLIST_CHECKED_PREFIX_VARIANT) -> CHECKLIST_CHECKED_PREFIX_VARIANT.length
-        else -> return false
+        else -> return null
     }
-    return safeOffset < lineStart + prefixLength
+    return ChecklistContentRange(start = lineStart, end = lineStart + prefixLength)
 }
 
 internal fun checkedChecklistContentRanges(text: String): List<ChecklistContentRange> {
@@ -395,6 +458,41 @@ internal fun checkedChecklistContentRanges(text: String): List<ChecklistContentR
         lineStart = lineEnd + 1
     }
     return ranges
+}
+
+internal fun checklistIconRanges(text: String): List<ChecklistContentRange> {
+    if (text.isEmpty()) return emptyList()
+    val ranges = mutableListOf<ChecklistContentRange>()
+    var lineStart = 0
+    while (lineStart < text.length) {
+        val lineEnd = text.indexOf('\n', startIndex = lineStart).let { if (it == -1) text.length else it }
+        checklistIconRangeContainingOffset(text, lineStart)?.let { ranges.add(it) }
+        if (lineEnd >= text.length) break
+        lineStart = lineEnd + 1
+    }
+    return ranges
+}
+
+internal fun pinCandidateInText(text: String, cursor: Int): PinTextCandidate? {
+    if (text.isEmpty()) return null
+
+    val lineProbe = cursor.coerceIn(0, text.lastIndex)
+    val previousNewline = if (lineProbe == 0) -1 else text.lastIndexOf('\n', startIndex = lineProbe - 1)
+    val lineStart = if (previousNewline == -1) 0 else previousNewline + 1
+    val lineEnd = text.indexOf('\n', startIndex = lineProbe).let { if (it == -1) text.length else it }
+    val line = text.substring(lineStart, lineEnd)
+    val prefixLength = checklistPrefixLength(line) ?: 0
+    val textStart = lineStart + prefixLength
+    val pinnedText = text.substring(textStart, lineEnd).trim()
+    if (pinnedText.isEmpty()) return null
+
+    val sourceEnd = if (lineEnd < text.length) lineEnd + 1 else lineEnd
+    return PinTextCandidate(
+        textStart = textStart,
+        textEnd = lineEnd,
+        sourceStart = lineStart,
+        sourceEnd = sourceEnd
+    )
 }
 
 private fun normalizeLegacyChecklistPrefixes(editable: Editable) {
@@ -439,6 +537,41 @@ private fun normalizeLegacyChecklistPrefixes(editable: Editable) {
     replacements.asReversed().forEach { replacement ->
         editable.replace(replacement.start, replacement.end, replacement.replacement)
     }
+}
+
+private fun checklistPrefixLength(line: String): Int? {
+    return when {
+        line.startsWith(CHECKLIST_CHECKED_PREFIX) -> CHECKLIST_CHECKED_PREFIX.length
+        line.startsWith(CHECKLIST_CHECKED_PREFIX_VARIANT) -> CHECKLIST_CHECKED_PREFIX_VARIANT.length
+        line.startsWith(CHECKLIST_UNCHECKED_PREFIX) -> CHECKLIST_UNCHECKED_PREFIX.length
+        line.startsWith(LEGACY_CHECKLIST_CHECKED_PREFIX, ignoreCase = true) -> LEGACY_CHECKLIST_CHECKED_PREFIX.length
+        line.startsWith(LEGACY_CHECKLIST_UNCHECKED_PREFIX) -> LEGACY_CHECKLIST_UNCHECKED_PREFIX.length
+        line.startsWith(LEGACY_SHORT_CHECKED_PREFIX, ignoreCase = true) -> LEGACY_SHORT_CHECKED_PREFIX.length
+        line.startsWith(LEGACY_SHORT_UNCHECKED_PREFIX) -> LEGACY_SHORT_UNCHECKED_PREFIX.length
+        else -> null
+    }
+}
+
+internal class ChecklistControlPlaceholderSpan : ReplacementSpan() {
+    override fun getSize(
+        paint: Paint,
+        text: CharSequence?,
+        start: Int,
+        end: Int,
+        fm: Paint.FontMetricsInt?
+    ): Int = 0
+
+    override fun draw(
+        canvas: android.graphics.Canvas,
+        text: CharSequence?,
+        start: Int,
+        end: Int,
+        x: Float,
+        top: Int,
+        y: Int,
+        bottom: Int,
+        paint: Paint
+    ) = Unit
 }
 
 private data class ChecklistPrefixReplacement(
@@ -620,6 +753,51 @@ private fun fontSizeAt(editable: Editable, index: Int, defaultSizeSp: Int): Int 
     return spans.lastOrNull()?.let { if (it.dip) it.size else defaultSizeSp } ?: defaultSizeSp
 }
 
+private fun destinationFormattingSpans(editable: Editable, start: Int): List<Any> {
+    if (editable.isEmpty()) return emptyList()
+    val probe = when {
+        start < editable.length -> start
+        else -> editable.length - 1
+    }
+    return buildList {
+        editable.getSpans(probe, probe, StyleSpan::class.java).forEach { span ->
+            add(StyleSpan(span.style))
+        }
+        editable.getSpans(probe, probe, UnderlineSpan::class.java).forEach {
+            add(UnderlineSpan())
+        }
+        editable.getSpans(probe, probe, StrikethroughSpan::class.java).forEach { span ->
+            if (span !is ChecklistStrikeThroughSpan) {
+                add(StrikethroughSpan())
+            }
+        }
+        editable.getSpans(probe, probe, ForegroundColorSpan::class.java).lastOrNull()?.let { span ->
+            add(ForegroundColorSpan(span.foregroundColor))
+        }
+        editable.getSpans(probe, probe, AbsoluteSizeSpan::class.java).lastOrNull()?.let { span ->
+            add(AbsoluteSizeSpan(span.size, span.dip))
+        }
+    }
+}
+
+private fun removeUserFormattingSpans(editable: Editable, start: Int, end: Int) {
+    listOf(
+        StyleSpan::class.java,
+        UnderlineSpan::class.java,
+        StrikethroughSpan::class.java,
+        ForegroundColorSpan::class.java,
+        AbsoluteSizeSpan::class.java
+    ).forEach { clazz ->
+        editable.getSpans(start, end, clazz).forEach { span ->
+            val spanStart = editable.getSpanStart(span)
+            val spanEnd = editable.getSpanEnd(span)
+            if (spanStart >= start && spanEnd <= end) {
+                editable.removeSpan(span)
+            }
+        }
+    }
+}
+
 private fun <T> removeSpanFromRange(
     editable: Editable,
     start: Int,
@@ -655,3 +833,23 @@ private fun <T> removeCursorSpan(editable: Editable, index: Int, clazz: Class<T>
 }
 
 private class ChecklistStrikeThroughSpan : StrikethroughSpan()
+
+internal class ParagraphSpacingSpan(private val spacingPx: Int) : LineHeightSpan {
+    override fun chooseHeight(
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        spanstartv: Int,
+        v: Int,
+        fm: Paint.FontMetricsInt
+    ) {
+        // More robust check for paragraph end: 
+        // Either the line ends with a newline, or it's followed by one.
+        val hasNewline = end > 0 && end <= text.length && (text[end - 1] == '\n' || (end < text.length && text[end] == '\n'))
+        
+        if (hasNewline) {
+            fm.descent += spacingPx
+            fm.bottom += spacingPx
+        }
+    }
+}

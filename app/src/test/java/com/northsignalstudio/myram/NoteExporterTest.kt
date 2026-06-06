@@ -35,10 +35,15 @@ class NoteExporterTest {
 
             assertEquals("*/*", artifact.mimeType)
             val jsonFile = artifact.files.first { it.extension.lowercase() == "json" }
+            val textFile = artifact.files.first { it.extension.lowercase() == "txt" }
             val json = jsonFile.readText(Charsets.UTF_8)
+            val text = textFile.readText(Charsets.UTF_8)
             assertTrue(json.contains("\"title\": \"Daily Log\""))
             assertTrue(json.contains("\"content\": \"Body content\""))
             assertTrue(json.contains("\"attachments\": []"))
+            assertTrue(text.contains("Title: Daily Log"))
+            assertTrue(text.contains("Pinned:\n(None)"))
+            assertTrue(text.contains("Content:\nBody content"))
         } finally {
             directory.deleteRecursively()
         }
@@ -75,9 +80,11 @@ class NoteExporterTest {
             )
 
             val jsonFile = artifact.files.first { it.extension.lowercase() == "json" }
-            val attachmentFiles = artifact.files.filter { it.extension.lowercase() != "json" }
+            val attachmentFiles = artifact.files.filter { it.extension.lowercase() == "jpg" }
+            val textFiles = artifact.files.filter { it.extension.lowercase() == "txt" }
 
             assertEquals(1, attachmentFiles.size)
+            assertEquals(1, textFiles.size)
             assertTrue(attachmentFiles.first().name.endsWith(".jpg"))
             assertTrue(attachmentFiles.first().readBytes().contentEquals(jpeg))
 
@@ -117,9 +124,13 @@ class NoteExporterTest {
             )
 
             val json = artifact.files.first { it.extension.lowercase() == "json" }.readText(Charsets.UTF_8)
+            val text = artifact.files.first { it.extension.lowercase() == "txt" }.readText(Charsets.UTF_8)
             assertTrue(json.contains("\"pinnedText\": ["))
             assertTrue(json.indexOf("\"text\": \"First\"") < json.indexOf("\"text\": \"Second\""))
             assertTrue(json.contains("\"content\": \"Body stays here\""))
+            assertTrue(text.contains("Title: Plan"))
+            assertTrue(text.contains("Pinned:\n- First\n- Second"))
+            assertTrue(text.contains("Content:\nBody stays here"))
         } finally {
             directory.deleteRecursively()
         }
