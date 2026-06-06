@@ -958,12 +958,6 @@ fun NoteEditorScreen(
                                 )
                             }
                             DropdownMenuItem(
-                                text = { Text("Attachments") },
-                                onClick = {
-                                    isAttachmentMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
                                 text = { Text("Photo Library") },
                                 onClick = {
                                     isAttachmentMenuExpanded = false
