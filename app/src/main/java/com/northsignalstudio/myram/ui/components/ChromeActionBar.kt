@@ -1,6 +1,7 @@
 package com.northsignalstudio.myram.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
@@ -14,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import com.northsignalstudio.myram.ui.theme.EditorChromeStyle
+import com.northsignalstudio.myram.ui.theme.md_theme_dark_surface
+import com.northsignalstudio.myram.ui.theme.md_theme_dark_toolbarBackground
 
 @Composable
 fun ChromeActionBar(
@@ -21,16 +24,24 @@ fun ChromeActionBar(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit
 ) {
+    val shape = RoundedCornerShape(12.dp)
+    val isDarkAppearance = MaterialTheme.colorScheme.background == md_theme_dark_surface
+    val fillBrush = when (style) {
+        EditorChromeStyle.ChromeAccent -> chromeAccentBrush(MaterialTheme.colorScheme.background)
+        EditorChromeStyle.WarmPaper -> SolidColor(style.toolbarColor)
+        EditorChromeStyle.Standard -> SolidColor(if (isDarkAppearance) md_theme_dark_toolbarBackground else style.toolbarColor)
+    }
+    val strokeColor = when (style) {
+        EditorChromeStyle.ChromeAccent -> chromeAccentStroke(MaterialTheme.colorScheme.background)
+        EditorChromeStyle.WarmPaper -> style.toolbarStrokeColor
+        EditorChromeStyle.Standard -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+    }
+
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                brush = if (style == EditorChromeStyle.ChromeAccent) {
-                    chromeAccentBrush(MaterialTheme.colorScheme.background)
-                } else {
-                    SolidColor(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                }
-            )
+            .clip(shape)
+            .background(brush = fillBrush)
+            .border(width = 1.dp, color = strokeColor, shape = shape)
             .padding(horizontal = 10.dp, vertical = 4.dp),
         content = content
     )
@@ -55,4 +66,9 @@ private fun chromeAccentBrush(backgroundColor: Color): Brush {
             )
         )
     }
+}
+
+private fun chromeAccentStroke(backgroundColor: Color): Color {
+    val isDark = backgroundColor.red + backgroundColor.green + backgroundColor.blue < 1.5f
+    return Color.White.copy(alpha = if (isDark) 0.22f else 0.44f)
 }

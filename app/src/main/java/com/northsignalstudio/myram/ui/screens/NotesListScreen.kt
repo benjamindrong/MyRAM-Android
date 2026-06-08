@@ -76,6 +76,8 @@ import com.northsignalstudio.myram.ui.NotesViewModel
 import com.northsignalstudio.myram.ui.richtext.plainTextFromStoredContent
 import com.northsignalstudio.myram.ui.theme.AppearanceSetting
 import com.northsignalstudio.myram.ui.theme.EditorChromeStyle
+import com.northsignalstudio.myram.ui.theme.md_theme_dark_surface
+import com.northsignalstudio.myram.ui.theme.md_theme_dark_toolbarBackground
 import com.northsignalstudio.myram.debug.DebugDemoDataGenerator
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -893,6 +895,7 @@ fun NotesListScreen(
                         NoteListRow(
                             note = note,
                             pinnedTextItems = pinnedTextByNoteId[note.id].orEmpty(),
+                            editorChromeStyle = editorChromeStyle,
                             showingRecentlyDeleted = showingRecentlyDeleted,
                             selectionMode = selectionMode,
                             selected = selectedNoteIds.contains(note.id),
@@ -1028,6 +1031,7 @@ private fun FolderListRow(
 private fun NoteListRow(
     note: Note,
     pinnedTextItems: List<PinnedText>,
+    editorChromeStyle: EditorChromeStyle,
     showingRecentlyDeleted: Boolean,
     selectionMode: Boolean,
     selected: Boolean,
@@ -1037,10 +1041,17 @@ private fun NoteListRow(
     onRestore: (Note) -> Unit,
     onPermanentDelete: (Note) -> Unit
 ) {
-    val containerColor = if (note.isPinned) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+    val notePreviewBackground = when {
+        editorChromeStyle.isWarmPaper -> MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.background == md_theme_dark_surface -> md_theme_dark_toolbarBackground
+        editorChromeStyle == EditorChromeStyle.Standard -> editorChromeStyle.toolbarColor
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+    }
+    val containerColor = when {
+        editorChromeStyle.isWarmPaper -> notePreviewBackground
+        editorChromeStyle == EditorChromeStyle.Standard -> notePreviewBackground
+        note.isPinned -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        else -> notePreviewBackground
     }
 
     Box(modifier = Modifier.padding(vertical = 4.dp)) {

@@ -138,6 +138,7 @@ internal fun RichTextEditor(
     onFormatStateChanged: (RichTextFormatState) -> Unit,
     actionsSink: (RichTextEditorActions) -> Unit,
     contentTextColor: Color,
+    backgroundColor: Color,
     placeholderText: String,
     bottomContentInset: Dp = 96.dp
 ) {
@@ -152,6 +153,7 @@ internal fun RichTextEditor(
             FormattingEditText(context).apply {
                 setTextColor(contentTextColor.toArgb())
                 setHintTextColor(contentTextColor.copy(alpha = 0.45f).toArgb())
+                setBackgroundColor(backgroundColor.toArgb())
                 applySelectionColors(contentTextColor)
                 hint = placeholderText
                 setText(decodeRichTextContent(storedContent), TextView.BufferType.EDITABLE)
@@ -173,6 +175,7 @@ internal fun RichTextEditor(
             }
             editText.setTextColor(contentTextColor.toArgb())
             editText.setHintTextColor(contentTextColor.copy(alpha = 0.45f).toArgb())
+            editText.setBackgroundColor(backgroundColor.toArgb())
             editText.applySelectionColors(contentTextColor)
             val currentEncoded = encodeRichTextContent(editText.text ?: "")
             if (currentEncoded != storedContent) {
