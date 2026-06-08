@@ -223,6 +223,16 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
     private var baseRightPaddingPx = 0
     private var baseTopPaddingPx = 0
     private var lastBottomPaddingPx = 0
+    private val editorHorizontalPaddingPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        10f,
+        resources.displayMetrics
+    ).toInt()
+    private val editorVerticalPaddingPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        8f,
+        resources.displayMetrics
+    ).toInt()
     private var suppressCallbacks = false
     private var onStoredContentChanged: ((String) -> Unit)? = null
     private var onPlainTextChanged: ((String) -> Unit)? = null
@@ -348,10 +358,10 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         val hasChecklist = checklistIconRanges(content).isNotEmpty()
         val gutter = if (hasChecklist) checklistGutterWidthPx else 0
         setPadding(
-            baseLeftPaddingPx + gutter,
-            baseTopPaddingPx,
-            baseRightPaddingPx + gutter,
-            bottomPaddingPx
+            baseLeftPaddingPx + gutter + editorHorizontalPaddingPx,
+            baseTopPaddingPx + editorVerticalPaddingPx,
+            baseRightPaddingPx + gutter + editorHorizontalPaddingPx,
+            bottomPaddingPx + editorVerticalPaddingPx
         )
     }
 
