@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,6 +40,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +78,8 @@ import com.northsignalstudio.myram.ui.NotesViewModel
 import com.northsignalstudio.myram.ui.richtext.plainTextFromStoredContent
 import com.northsignalstudio.myram.ui.theme.AppearanceSetting
 import com.northsignalstudio.myram.ui.theme.EditorChromeStyle
+import com.northsignalstudio.myram.ui.theme.md_theme_dark_surface
+import com.northsignalstudio.myram.ui.theme.md_theme_dark_toolbarBackground
 import com.northsignalstudio.myram.debug.DebugDemoDataGenerator
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -130,6 +134,7 @@ fun NotesListScreen(
         selectedNoteIds = emptySet()
         activeFolderMenuId = null
         previewedNote = null
+        showingBulkActions = false
         if (showingRecentlyDeleted) {
             vm.refreshRecentlyDeletedNotes()
         }
@@ -456,66 +461,35 @@ fun NotesListScreen(
     }
 
     if (showingBulkActions) {
-        AlertDialog(
-            onDismissRequest = { showingBulkActions = false },
-            title = { Text("${selectedNoteIds.size} selected") },
-            text = { Text("Choose an action for selected notes.") },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(
-                        onClick = {
-                            notes.filter { selectedNoteIds.contains(it.id) }
-                                .forEach { note -> vm.setNotePinned(note, true) }
-                            showingBulkActions = false
-                        }
-                    ) {
-                        Text("Pin")
-                    }
-                    TextButton(
-                        onClick = {
-                            notes.filter { selectedNoteIds.contains(it.id) }
-                                .forEach { note -> vm.setNotePinned(note, false) }
-                            showingBulkActions = false
-                        }
-                    ) {
-                        Text("Unpin")
-                    }
-                    TextButton(
-                        onClick = {
-                            onExportSelectedNotes(notes.filter { selectedNoteIds.contains(it.id) })
-                            showingBulkActions = false
-                        }
-                    ) {
-                        Text("Export")
-                    }
-                }
+        val selectedNotes = notes.filter { selectedNoteIds.contains(it.id) }
+        val allSelectedPinned = selectedNotes.isNotEmpty() && selectedNotes.all { it.isPinned }
+        val selectedCountLabel = "${selectedNotes.size} Selected"
+        NotePreviewDialog(
+            note = null,
+            selectedCount = selectedNotes.size,
+            pinnedTextItems = emptyList(),
+            showPreviewCard = false,
+            pinActionLabel = if (allSelectedPinned) "Unpin $selectedCountLabel" else "Pin $selectedCountLabel",
+            onDismiss = {
+                showingBulkActions = false
             },
-            dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(
-                        onClick = {
-                            notesToMoveBatch = notes.filter { selectedNoteIds.contains(it.id) }
-                            showingBulkActions = false
-                        },
-                        enabled = selectedNoteIds.isNotEmpty()
-                    ) {
-                        Text("Move")
-                    }
-                    TextButton(
-                        onClick = {
-                            notes.filter { selectedNoteIds.contains(it.id) }
-                                .forEach(vm::deleteNote)
-                            showingBulkActions = false
-                            selectionMode = false
-                            selectedNoteIds = emptySet()
-                        }
-                    ) {
-                        Text("Delete", color = MaterialTheme.colorScheme.error)
-                    }
-                    TextButton(onClick = { showingBulkActions = false }) {
-                        Text("Close")
-                    }
-                }
+            onPinAction = {
+                selectedNotes.forEach { note -> vm.setNotePinned(note, !allSelectedPinned) }
+                showingBulkActions = false
+            },
+            onMove = {
+                notesToMoveBatch = selectedNotes
+                showingBulkActions = false
+            },
+            onExport = {
+                onExportSelectedNotes(selectedNotes)
+                showingBulkActions = false
+            },
+            onDelete = {
+                selectedNotes.forEach(vm::deleteNote)
+                showingBulkActions = false
+                selectionMode = false
+                selectedNoteIds = emptySet()
             }
         )
     }
@@ -893,6 +867,7 @@ fun NotesListScreen(
                         NoteListRow(
                             note = note,
                             pinnedTextItems = pinnedTextByNoteId[note.id].orEmpty(),
+                            editorChromeStyle = editorChromeStyle,
                             showingRecentlyDeleted = showingRecentlyDeleted,
                             selectionMode = selectionMode,
                             selected = selectedNoteIds.contains(note.id),
@@ -936,9 +911,12 @@ fun NotesListScreen(
     previewedNote?.let { note ->
         NotePreviewDialog(
             note = note,
+            selectedCount = 1,
             pinnedTextItems = pinnedTextByNoteId[note.id].orEmpty(),
+            showPreviewCard = true,
+            pinActionLabel = if (note.isPinned) "Unpin" else "Pin",
             onDismiss = { previewedNote = null },
-            onTogglePinned = {
+            onPinAction = {
                 vm.setNotePinned(note, !note.isPinned)
                 previewedNote = null
             },
@@ -1028,6 +1006,7 @@ private fun FolderListRow(
 private fun NoteListRow(
     note: Note,
     pinnedTextItems: List<PinnedText>,
+    editorChromeStyle: EditorChromeStyle,
     showingRecentlyDeleted: Boolean,
     selectionMode: Boolean,
     selected: Boolean,
@@ -1037,10 +1016,17 @@ private fun NoteListRow(
     onRestore: (Note) -> Unit,
     onPermanentDelete: (Note) -> Unit
 ) {
-    val containerColor = if (note.isPinned) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+    val notePreviewBackground = when {
+        editorChromeStyle.isWarmPaper -> MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.background == md_theme_dark_surface -> md_theme_dark_toolbarBackground
+        editorChromeStyle == EditorChromeStyle.Standard -> editorChromeStyle.toolbarColor
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+    }
+    val containerColor = when {
+        editorChromeStyle.isWarmPaper -> notePreviewBackground
+        editorChromeStyle == EditorChromeStyle.Standard -> notePreviewBackground
+        note.isPinned -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        else -> notePreviewBackground
     }
 
     Box(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -1130,78 +1116,141 @@ private fun NoteListRow(
 
 @Composable
 private fun NotePreviewDialog(
-    note: Note,
+    note: Note?,
+    selectedCount: Int,
     pinnedTextItems: List<PinnedText>,
+    showPreviewCard: Boolean,
+    pinActionLabel: String,
     onDismiss: () -> Unit,
-    onTogglePinned: () -> Unit,
+    onPinAction: () -> Unit,
     onMove: () -> Unit,
     onExport: () -> Unit,
     onDelete: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        Card(
+        Column(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
-                .aspectRatio(1f)
-                .testTag("note-preview-dialog")
+                .testTag("note-preview-dialog"),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = note.title.ifBlank { "Untitled" },
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-                pinnedTextPreviewLine(pinnedTextItems)?.let { preview ->
-                    PinnedPreviewText(
-                        text = preview,
-                        maxLines = 3,
-                        modifier = Modifier.fillMaxWidth()
+            if (showPreviewCard) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = note?.title?.ifBlank { "Untitled" } ?: "Untitled",
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        pinnedTextPreviewLine(pinnedTextItems)?.let { preview ->
+                            PinnedPreviewText(
+                                text = preview,
+                                maxLines = 3,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        val contentPreview = note?.let { noteContentPreviewText(it.content) }.orEmpty()
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            if (contentPreview.isNotEmpty()) {
+                                Text(
+                                    text = contentPreview,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 6.dp
+                ) {
+                    Text(
+                        text = "$selectedCount Notes Selected",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center
                     )
                 }
-                val contentPreview = noteContentPreviewText(note.content)
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    if (contentPreview.isNotEmpty()) {
-                        Text(
-                            text = contentPreview,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onTogglePinned) {
-                        Text(if (note.isPinned) "Unpin" else "Pin")
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    TextButton(onClick = onMove) {
-                        Text("Move to folder")
-                    }
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onExport) {
-                        Text("Export")
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDelete) {
-                        Text("Delete", color = MaterialTheme.colorScheme.error)
-                    }
-                }
+            }
+
+            NotePreviewActionGroup {
+                NotePreviewActionRow(label = pinActionLabel, onClick = onPinAction)
+                NotePreviewActionRow(
+                    label = if (selectedCount > 1) "Move $selectedCount to Folder" else "Move to Folder",
+                    onClick = onMove
+                )
+                NotePreviewActionRow(
+                    label = if (selectedCount > 1) "Export $selectedCount Selected" else "Export",
+                    onClick = onExport
+                )
+                NotePreviewActionRow(
+                    label = if (selectedCount > 1) "Delete $selectedCount Selected" else "Delete",
+                    destructive = true,
+                    showDivider = false,
+                    onClick = onDelete
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun NotePreviewActionGroup(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 6.dp,
+        content = { Column(content = content) }
+    )
+}
+
+@Composable
+private fun NotePreviewActionRow(
+    label: String,
+    destructive: Boolean = false,
+    prominent: Boolean = false,
+    showDivider: Boolean = true,
+    onClick: () -> Unit
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontWeight = if (prominent) FontWeight.SemiBold else FontWeight.Normal
+            ),
+            color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+        )
+    }
+    if (showDivider) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
     }
 }
 

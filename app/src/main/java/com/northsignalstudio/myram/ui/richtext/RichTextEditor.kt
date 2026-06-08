@@ -138,6 +138,7 @@ internal fun RichTextEditor(
     onFormatStateChanged: (RichTextFormatState) -> Unit,
     actionsSink: (RichTextEditorActions) -> Unit,
     contentTextColor: Color,
+    backgroundColor: Color,
     placeholderText: String,
     bottomContentInset: Dp = 96.dp
 ) {
@@ -152,6 +153,7 @@ internal fun RichTextEditor(
             FormattingEditText(context).apply {
                 setTextColor(contentTextColor.toArgb())
                 setHintTextColor(contentTextColor.copy(alpha = 0.45f).toArgb())
+                setBackgroundColor(backgroundColor.toArgb())
                 applySelectionColors(contentTextColor)
                 hint = placeholderText
                 setText(decodeRichTextContent(storedContent), TextView.BufferType.EDITABLE)
@@ -173,6 +175,7 @@ internal fun RichTextEditor(
             }
             editText.setTextColor(contentTextColor.toArgb())
             editText.setHintTextColor(contentTextColor.copy(alpha = 0.45f).toArgb())
+            editText.setBackgroundColor(backgroundColor.toArgb())
             editText.applySelectionColors(contentTextColor)
             val currentEncoded = encodeRichTextContent(editText.text ?: "")
             if (currentEncoded != storedContent) {
@@ -220,6 +223,16 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
     private var baseRightPaddingPx = 0
     private var baseTopPaddingPx = 0
     private var lastBottomPaddingPx = 0
+    private val editorHorizontalPaddingPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        10f,
+        resources.displayMetrics
+    ).toInt()
+    private val editorVerticalPaddingPx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        8f,
+        resources.displayMetrics
+    ).toInt()
     private var suppressCallbacks = false
     private var onStoredContentChanged: ((String) -> Unit)? = null
     private var onPlainTextChanged: ((String) -> Unit)? = null
@@ -345,10 +358,10 @@ private class FormattingEditText(context: Context) : AppCompatEditText(context),
         val hasChecklist = checklistIconRanges(content).isNotEmpty()
         val gutter = if (hasChecklist) checklistGutterWidthPx else 0
         setPadding(
-            baseLeftPaddingPx + gutter,
-            baseTopPaddingPx,
-            baseRightPaddingPx + gutter,
-            bottomPaddingPx
+            baseLeftPaddingPx + gutter + editorHorizontalPaddingPx,
+            baseTopPaddingPx + editorVerticalPaddingPx,
+            baseRightPaddingPx + gutter + editorHorizontalPaddingPx,
+            bottomPaddingPx + editorVerticalPaddingPx
         )
     }
 

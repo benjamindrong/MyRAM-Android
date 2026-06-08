@@ -103,7 +103,10 @@ class MainActivity : ComponentActivity() {
                 prefs.edit().putString("editor_chrome_style", style.preferenceValue).apply()
             }
 
-            MyRAMTheme(appearanceSetting = appearanceSetting) {
+            MyRAMTheme(
+                appearanceSetting = appearanceSetting,
+                editorChromeStyle = editorChromeStyle
+            ) {
                 val vm = androidx.lifecycle.viewmodel.compose.viewModel<NotesViewModel>()
 
                 pendingExport?.let { export ->

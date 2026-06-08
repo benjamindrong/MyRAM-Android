@@ -6,6 +6,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -114,6 +115,10 @@ import com.northsignalstudio.myram.ui.richtext.RichTextEditorActions
 import com.northsignalstudio.myram.ui.richtext.RichTextFormatState
 import com.northsignalstudio.myram.ui.richtext.plainTextFromStoredContent
 import com.northsignalstudio.myram.ui.theme.EditorChromeStyle
+import com.northsignalstudio.myram.ui.theme.md_theme_dark_editorEntryBackground
+import com.northsignalstudio.myram.ui.theme.md_theme_dark_surface
+import com.northsignalstudio.myram.ui.theme.md_theme_dark_toolbarBackground
+import com.northsignalstudio.myram.ui.theme.md_theme_light_editorEntryBackground
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -333,6 +338,21 @@ private fun RichTextActionBars(
     var sizeMenuExpanded by remember { mutableStateOf(false) }
     var historyMenuExpanded by remember { mutableStateOf(false) }
     var pasteMenuExpanded by remember { mutableStateOf(false) }
+    val toolbarShape = RoundedCornerShape(12.dp)
+    val toolbarColor = if (chromeStyle.isWarmPaper) {
+        MaterialTheme.colorScheme.surfaceVariant
+    } else if (MaterialTheme.colorScheme.background == md_theme_dark_surface) {
+        md_theme_dark_toolbarBackground
+    } else if (chromeStyle == EditorChromeStyle.Standard) {
+        chromeStyle.toolbarColor
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val toolbarStrokeColor = if (chromeStyle.isWarmPaper) {
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+    } else {
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+    }
 
     Column(
         modifier = modifier,
@@ -342,8 +362,9 @@ private fun RichTextActionBars(
         if (showingFormattingControls) {
             Column(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+                    .clip(toolbarShape)
+                    .background(toolbarColor)
+                    .border(width = 1.dp, color = toolbarStrokeColor, shape = toolbarShape)
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -1005,6 +1026,7 @@ fun NoteEditorScreen(
             ) {
                 PinnedTextSection(
                     pinnedTextItems = pinnedTextItems,
+                    editorChromeStyle = editorChromeStyle,
                     expanded = arePinnedExpanded,
                     onExpandedChanged = {
                         arePinnedExpanded = it
@@ -1047,6 +1069,12 @@ fun NoteEditorScreen(
                     },
                     actionsSink = { editorActions = it },
                     contentTextColor = MaterialTheme.colorScheme.onSurface,
+                    backgroundColor = when {
+                        editorChromeStyle.isWarmPaper -> MaterialTheme.colorScheme.surface
+                        MaterialTheme.colorScheme.background == md_theme_dark_surface -> md_theme_dark_editorEntryBackground
+                        editorChromeStyle == EditorChromeStyle.Standard -> md_theme_light_editorEntryBackground
+                        else -> MaterialTheme.colorScheme.background
+                    },
                     placeholderText = "Start typing...",
                     bottomContentInset = 0.dp
                 )
@@ -1168,6 +1196,7 @@ fun NoteEditorScreen(
 @Composable
 private fun PinnedTextSection(
     pinnedTextItems: List<PinnedText>,
+    editorChromeStyle: EditorChromeStyle,
     expanded: Boolean,
     onExpandedChanged: (Boolean) -> Unit,
     onAdd: () -> Unit,
@@ -1203,7 +1232,11 @@ private fun PinnedTextSection(
             .padding(bottom = 10.dp)
             .testTag("pinned-text-section"),
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        color = if (editorChromeStyle.isWarmPaper) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        }
     ) {
         Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
             Row(
