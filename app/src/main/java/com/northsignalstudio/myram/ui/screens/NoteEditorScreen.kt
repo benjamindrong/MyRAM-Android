@@ -119,7 +119,6 @@ import com.northsignalstudio.myram.ui.theme.md_theme_dark_editorEntryBackground
 import com.northsignalstudio.myram.ui.theme.md_theme_dark_surface
 import com.northsignalstudio.myram.ui.theme.md_theme_dark_toolbarBackground
 import com.northsignalstudio.myram.ui.theme.md_theme_light_editorEntryBackground
-import com.northsignalstudio.myram.ui.theme.warm_paper_editorPinnedSection
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -341,7 +340,7 @@ private fun RichTextActionBars(
     var pasteMenuExpanded by remember { mutableStateOf(false) }
     val toolbarShape = RoundedCornerShape(12.dp)
     val toolbarColor = if (chromeStyle.isWarmPaper) {
-        chromeStyle.toolbarColor
+        MaterialTheme.colorScheme.surfaceVariant
     } else if (MaterialTheme.colorScheme.background == md_theme_dark_surface) {
         md_theme_dark_toolbarBackground
     } else if (chromeStyle == EditorChromeStyle.Standard) {
@@ -350,7 +349,7 @@ private fun RichTextActionBars(
         MaterialTheme.colorScheme.surfaceVariant
     }
     val toolbarStrokeColor = if (chromeStyle.isWarmPaper) {
-        chromeStyle.toolbarStrokeColor
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
     } else {
         MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
     }
@@ -1234,7 +1233,7 @@ private fun PinnedTextSection(
             .testTag("pinned-text-section"),
         shape = RoundedCornerShape(8.dp),
         color = if (editorChromeStyle.isWarmPaper) {
-            warm_paper_editorPinnedSection
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
         } else {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
         }

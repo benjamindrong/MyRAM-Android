@@ -3,7 +3,7 @@ package com.northsignalstudio.myram.ui.theme
 import androidx.compose.ui.graphics.Color
 
 enum class EditorChromeStyle(val preferenceValue: String, val label: String) {
-    Standard("standard", "Standard"),
+    Standard("standard", "None"),
     ChromeAccent("chrome_accent", "Chrome Accent"),
     WarmPaper("warm_paper", "Warm Paper");
 

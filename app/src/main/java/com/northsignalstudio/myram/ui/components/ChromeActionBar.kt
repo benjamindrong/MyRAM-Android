@@ -28,12 +28,12 @@ fun ChromeActionBar(
     val isDarkAppearance = MaterialTheme.colorScheme.background == md_theme_dark_surface
     val fillBrush = when (style) {
         EditorChromeStyle.ChromeAccent -> chromeAccentBrush(MaterialTheme.colorScheme.background)
-        EditorChromeStyle.WarmPaper -> SolidColor(style.toolbarColor)
+        EditorChromeStyle.WarmPaper -> SolidColor(MaterialTheme.colorScheme.surfaceVariant)
         EditorChromeStyle.Standard -> SolidColor(if (isDarkAppearance) md_theme_dark_toolbarBackground else style.toolbarColor)
     }
     val strokeColor = when (style) {
         EditorChromeStyle.ChromeAccent -> chromeAccentStroke(MaterialTheme.colorScheme.background)
-        EditorChromeStyle.WarmPaper -> style.toolbarStrokeColor
+        EditorChromeStyle.WarmPaper -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
         EditorChromeStyle.Standard -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
     }
 

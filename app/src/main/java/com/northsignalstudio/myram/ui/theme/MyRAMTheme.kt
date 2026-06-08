@@ -41,6 +41,18 @@ private val WarmPaperColors = lightColorScheme(
     outline = warm_paper_outline
 )
 
+private val WarmPaperDarkColors = darkColorScheme(
+    primary = warm_paper_dark_primary,
+    onPrimary = warm_paper_dark_onPrimary,
+    background = warm_paper_dark_background,
+    surface = warm_paper_dark_surface,
+    onSurface = warm_paper_dark_onSurface,
+    surfaceVariant = warm_paper_dark_surfaceVariant,
+    onSurfaceVariant = warm_paper_dark_onSurfaceVariant,
+    primaryContainer = warm_paper_dark_primaryContainer,
+    outline = warm_paper_dark_outline
+)
+
 @Composable
 fun MyRAMTheme(
     appearanceSetting: AppearanceSetting = AppearanceSetting.System,
@@ -53,6 +65,7 @@ fun MyRAMTheme(
         AppearanceSetting.Dark -> true
     }
     val colors = when {
+        editorChromeStyle.isWarmPaper && darkTheme -> WarmPaperDarkColors
         editorChromeStyle.isWarmPaper -> WarmPaperColors
         darkTheme -> DarkColors
         else -> LightColors
