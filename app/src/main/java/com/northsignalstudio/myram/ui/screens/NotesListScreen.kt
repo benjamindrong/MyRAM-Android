@@ -77,7 +77,6 @@ import com.northsignalstudio.myram.data.Note
 import com.northsignalstudio.myram.data.PinnedText
 import com.northsignalstudio.myram.ui.components.ChromeActionBar
 import com.northsignalstudio.myram.ui.components.chromeAccentTrimBrush
-import com.northsignalstudio.myram.ui.components.chromeControlPlate
 import com.northsignalstudio.myram.ui.components.computeTopBarLayout
 import com.northsignalstudio.myram.ui.NotesViewModel
 import com.northsignalstudio.myram.ui.richtext.plainTextFromStoredContent
@@ -587,13 +586,7 @@ fun NotesListScreen(
                         onClick = {
                             if (showingRecentlyDeleted) showingRecentlyDeleted = false else vm.navigateToParentFolder()
                         },
-                        modifier = Modifier
-                            .size(topBarControlSize)
-                            .chromeControlPlate(
-                                style = editorChromeStyle,
-                                backgroundColor = MaterialTheme.colorScheme.background,
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
-                            )
+                        modifier = Modifier.size(topBarControlSize)
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
@@ -609,14 +602,7 @@ fun NotesListScreen(
                             selectionMode = !selectionMode
                             if (!selectionMode) selectedNoteIds = emptySet()
                         },
-                        modifier = Modifier
-                            .size(topBarControlSize)
-                            .chromeControlPlate(
-                                style = editorChromeStyle,
-                                backgroundColor = MaterialTheme.colorScheme.background,
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                                selected = selectionMode
-                            )
+                        modifier = Modifier.size(topBarControlSize)
                     ) {
                         Icon(
                             imageVector = if (selectionMode) {
@@ -688,13 +674,7 @@ fun NotesListScreen(
                     IconButton(
                         onClick = { showingBulkActions = true },
                         enabled = selectedNoteIds.isNotEmpty(),
-                        modifier = Modifier
-                            .size(topBarControlSize)
-                            .chromeControlPlate(
-                                style = editorChromeStyle,
-                                backgroundColor = MaterialTheme.colorScheme.background,
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
-                            )
+                        modifier = Modifier.size(topBarControlSize)
                     ) {
                         Icon(
                             Icons.Filled.MoreVert,
@@ -711,13 +691,7 @@ fun NotesListScreen(
                                 IconButton(
                                     onClick = { historyMenuExpanded = true },
                                     enabled = spec.enabled,
-                                    modifier = Modifier
-                                        .size(topBarControlSize)
-                                        .chromeControlPlate(
-                                            style = editorChromeStyle,
-                                            backgroundColor = MaterialTheme.colorScheme.background,
-                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
-                                        )
+                                    modifier = Modifier.size(topBarControlSize)
                                 ) {
                                     Icon(
                                         spec.icon,
@@ -752,13 +726,7 @@ fun NotesListScreen(
                             IconButton(
                                 onClick = spec.onClick,
                                 enabled = spec.enabled,
-                                modifier = Modifier
-                                    .size(topBarControlSize)
-                                    .chromeControlPlate(
-                                        style = editorChromeStyle,
-                                        backgroundColor = MaterialTheme.colorScheme.background,
-                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
-                                    )
+                                modifier = Modifier.size(topBarControlSize)
                             ) {
                                 Icon(
                                     spec.icon,
@@ -794,13 +762,7 @@ fun NotesListScreen(
                         }
                         IconButton(
                             onClick = { actionsMenuExpanded = true },
-                            modifier = Modifier
-                                .size(topBarControlSize)
-                                .chromeControlPlate(
-                                    style = editorChromeStyle,
-                                    backgroundColor = MaterialTheme.colorScheme.background,
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
-                                )
+                            modifier = Modifier.size(topBarControlSize)
                         ) {
                             Icon(
                                 Icons.Filled.MoreVert,

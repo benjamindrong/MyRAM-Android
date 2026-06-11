@@ -2,6 +2,7 @@ package com.northsignalstudio.myram
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import com.northsignalstudio.myram.ui.screens.PinnedHighlightColor
 import com.northsignalstudio.myram.ui.screens.PinnedHighlightPalette
 import com.northsignalstudio.myram.ui.theme.AppearanceSetting
 import com.northsignalstudio.myram.ui.theme.EditorChromeStyle
@@ -25,9 +26,16 @@ class PinnedHighlightPaletteTest {
     @Test
     fun pinnedHighlightTextColor_hasReadableContrast() {
         assertEquals(Color(0xFFFAB942), PinnedHighlightPalette.Highlight)
-        assertTrue(
-            contrastRatio(PinnedHighlightPalette.Text, PinnedHighlightPalette.Highlight) > 4.5f
-        )
+        PinnedHighlightColor.entries.forEach { color ->
+            val highlight = PinnedHighlightPalette.highlightFor(color)
+            val text = PinnedHighlightPalette.textFor(color)
+            assertTrue(
+                "Contrast for ${color.label} should be readable",
+                contrastRatio(text, highlight) > 4.5f
+            )
+        }
+        assertEquals(PinnedHighlightColor.Yellow, PinnedHighlightColor.fromPreferenceValue(null))
+        assertEquals(PinnedHighlightColor.Slate, PinnedHighlightColor.fromPreferenceValue("slate"))
     }
 
     @Test
@@ -38,6 +46,7 @@ class PinnedHighlightPaletteTest {
         assertEquals("Warm Paper", EditorChromeStyle.WarmPaper.label)
         assertEquals(EditorChromeStyle.WarmPaper, EditorChromeStyle.fromPreferenceValue("warm_paper"))
         assertTrue(EditorChromeStyle.WarmPaper.isWarmPaper)
+        assertTrue(EditorChromeStyle.ChromeAccent.isChromeAccent)
         assertEquals(Color.White, EditorChromeStyle.Standard.toolbarColor)
         assertEquals(Color(0xFFF5F6F9), md_theme_light_editorEntryBackground)
         assertEquals(Color(0xFF2C2C2E), md_theme_dark_editorEntryBackground)
