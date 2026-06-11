@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import com.northsignalstudio.myram.ui.theme.EditorChromeStyle
 import com.northsignalstudio.myram.ui.theme.md_theme_dark_surface
@@ -41,13 +42,17 @@ fun ChromeActionBar(
         modifier = modifier
             .clip(shape)
             .background(brush = fillBrush)
-            .border(width = 1.dp, color = strokeColor, shape = shape)
+            .border(
+                width = if (style.isChromeAccent) 1.5.dp else 1.dp,
+                brush = if (style.isChromeAccent) chromeAccentTrimBrush(MaterialTheme.colorScheme.background) else SolidColor(strokeColor),
+                shape = shape
+            )
             .padding(horizontal = 10.dp, vertical = 4.dp),
         content = content
     )
 }
 
-private fun chromeAccentBrush(backgroundColor: Color): Brush {
+fun chromeAccentBrush(backgroundColor: Color): Brush {
     val isDark = backgroundColor.red + backgroundColor.green + backgroundColor.blue < 1.5f
     return if (isDark) {
         Brush.linearGradient(
@@ -68,7 +73,63 @@ private fun chromeAccentBrush(backgroundColor: Color): Brush {
     }
 }
 
-private fun chromeAccentStroke(backgroundColor: Color): Color {
+fun chromeAccentControlBrush(backgroundColor: Color, selected: Boolean = false): Brush {
+    val isDark = backgroundColor.red + backgroundColor.green + backgroundColor.blue < 1.5f
+    val boost = if (selected) 0.08f else 0f
+    return if (isDark) {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.28f + boost),
+                Color(0xFF2D3036).copy(alpha = 0.84f),
+                Color.White.copy(alpha = 0.16f + boost)
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.96f),
+                Color(0xFFC2C6CE).copy(alpha = 0.96f),
+                Color.White.copy(alpha = 0.74f)
+            )
+        )
+    }
+}
+
+fun chromeAccentTrimBrush(backgroundColor: Color): Brush {
+    val isDark = backgroundColor.red + backgroundColor.green + backgroundColor.blue < 1.5f
+    return if (isDark) {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.34f),
+                Color(0xFF111318).copy(alpha = 0.82f),
+                Color.White.copy(alpha = 0.22f)
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                Color(0xFF8E949F).copy(alpha = 0.78f),
+                Color.White.copy(alpha = 0.96f),
+                Color(0xFF7F8691).copy(alpha = 0.62f)
+            )
+        )
+    }
+}
+
+fun Modifier.chromeControlPlate(
+    style: EditorChromeStyle,
+    backgroundColor: Color,
+    shape: Shape,
+    selected: Boolean = false
+): Modifier {
+    if (!style.isChromeAccent) return this
+    return this
+        .clip(shape)
+        .background(chromeAccentControlBrush(backgroundColor, selected))
+        .border(width = 1.dp, brush = chromeAccentTrimBrush(backgroundColor), shape = shape)
+}
+
+fun chromeAccentStroke(backgroundColor: Color): Color {
     val isDark = backgroundColor.red + backgroundColor.green + backgroundColor.blue < 1.5f
     return Color.White.copy(alpha = if (isDark) 0.22f else 0.44f)
 }

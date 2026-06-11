@@ -10,6 +10,9 @@ enum class EditorChromeStyle(val preferenceValue: String, val label: String) {
     val isWarmPaper: Boolean
         get() = this == WarmPaper
 
+    val isChromeAccent: Boolean
+        get() = this == ChromeAccent
+
     val toolbarColor: Color
         get() = if (isWarmPaper) warm_paper_toolbar else Color(0xFFFFFFFF)
 

@@ -1,6 +1,7 @@
 package com.northsignalstudio.myram.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -58,7 +59,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -73,6 +76,8 @@ import com.northsignalstudio.myram.data.Folder
 import com.northsignalstudio.myram.data.Note
 import com.northsignalstudio.myram.data.PinnedText
 import com.northsignalstudio.myram.ui.components.ChromeActionBar
+import com.northsignalstudio.myram.ui.components.chromeAccentTrimBrush
+import com.northsignalstudio.myram.ui.components.chromeControlPlate
 import com.northsignalstudio.myram.ui.components.computeTopBarLayout
 import com.northsignalstudio.myram.ui.NotesViewModel
 import com.northsignalstudio.myram.ui.richtext.plainTextFromStoredContent
@@ -90,6 +95,8 @@ fun NotesListScreen(
     onAppearanceSettingChanged: (AppearanceSetting) -> Unit,
     editorChromeStyle: EditorChromeStyle,
     onEditorChromeStyleChanged: (EditorChromeStyle) -> Unit,
+    pinnedHighlightColor: PinnedHighlightColor,
+    onPinnedHighlightColorChanged: (PinnedHighlightColor) -> Unit,
     onExportSelectedNotes: (List<Note>) -> Unit,
     onNoteSelected: (Note?) -> Unit
 ) {
@@ -310,6 +317,26 @@ fun NotesListScreen(
                             Text(if (style == editorChromeStyle) "✓ ${style.label}" else style.label)
                         }
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Pinned Color", style = MaterialTheme.typography.labelLarge)
+                    PinnedHighlightColor.entries.forEach { color ->
+                        TextButton(
+                            onClick = {
+                                onPinnedHighlightColorChanged(color)
+                            },
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    modifier = Modifier.size(16.dp),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                    color = color.highlight
+                                ) {}
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (color == pinnedHighlightColor) "✓ ${color.label}" else color.label)
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -468,6 +495,7 @@ fun NotesListScreen(
             note = null,
             selectedCount = selectedNotes.size,
             pinnedTextItems = emptyList(),
+            pinnedHighlightColor = pinnedHighlightColor,
             showPreviewCard = false,
             pinActionLabel = if (allSelectedPinned) "Unpin $selectedCountLabel" else "Pin $selectedCountLabel",
             onDismiss = {
@@ -559,7 +587,13 @@ fun NotesListScreen(
                         onClick = {
                             if (showingRecentlyDeleted) showingRecentlyDeleted = false else vm.navigateToParentFolder()
                         },
-                        modifier = Modifier.size(topBarControlSize)
+                        modifier = Modifier
+                            .size(topBarControlSize)
+                            .chromeControlPlate(
+                                style = editorChromeStyle,
+                                backgroundColor = MaterialTheme.colorScheme.background,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                            )
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
@@ -575,7 +609,14 @@ fun NotesListScreen(
                             selectionMode = !selectionMode
                             if (!selectionMode) selectedNoteIds = emptySet()
                         },
-                        modifier = Modifier.size(topBarControlSize)
+                        modifier = Modifier
+                            .size(topBarControlSize)
+                            .chromeControlPlate(
+                                style = editorChromeStyle,
+                                backgroundColor = MaterialTheme.colorScheme.background,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                selected = selectionMode
+                            )
                     ) {
                         Icon(
                             imageVector = if (selectionMode) {
@@ -647,7 +688,13 @@ fun NotesListScreen(
                     IconButton(
                         onClick = { showingBulkActions = true },
                         enabled = selectedNoteIds.isNotEmpty(),
-                        modifier = Modifier.size(topBarControlSize)
+                        modifier = Modifier
+                            .size(topBarControlSize)
+                            .chromeControlPlate(
+                                style = editorChromeStyle,
+                                backgroundColor = MaterialTheme.colorScheme.background,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                            )
                     ) {
                         Icon(
                             Icons.Filled.MoreVert,
@@ -664,7 +711,13 @@ fun NotesListScreen(
                                 IconButton(
                                     onClick = { historyMenuExpanded = true },
                                     enabled = spec.enabled,
-                                    modifier = Modifier.size(topBarControlSize)
+                                    modifier = Modifier
+                                        .size(topBarControlSize)
+                                        .chromeControlPlate(
+                                            style = editorChromeStyle,
+                                            backgroundColor = MaterialTheme.colorScheme.background,
+                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                                        )
                                 ) {
                                     Icon(
                                         spec.icon,
@@ -699,7 +752,13 @@ fun NotesListScreen(
                             IconButton(
                                 onClick = spec.onClick,
                                 enabled = spec.enabled,
-                                modifier = Modifier.size(topBarControlSize)
+                                modifier = Modifier
+                                    .size(topBarControlSize)
+                                    .chromeControlPlate(
+                                        style = editorChromeStyle,
+                                        backgroundColor = MaterialTheme.colorScheme.background,
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                                    )
                             ) {
                                 Icon(
                                     spec.icon,
@@ -735,7 +794,13 @@ fun NotesListScreen(
                         }
                         IconButton(
                             onClick = { actionsMenuExpanded = true },
-                            modifier = Modifier.size(topBarControlSize)
+                            modifier = Modifier
+                                .size(topBarControlSize)
+                                .chromeControlPlate(
+                                    style = editorChromeStyle,
+                                    backgroundColor = MaterialTheme.colorScheme.background,
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                                )
                         ) {
                             Icon(
                                 Icons.Filled.MoreVert,
@@ -843,6 +908,7 @@ fun NotesListScreen(
                             FolderListRow(
                                 folder = folder,
                                 noteCount = folderActiveNoteCounts[folder.id] ?: 0,
+                                editorChromeStyle = editorChromeStyle,
                                 selectionMode = selectionMode,
                                 menuExpanded = activeFolderMenuId == folder.id,
                                 onOpen = { vm.openFolder(folder) },
@@ -868,6 +934,7 @@ fun NotesListScreen(
                             note = note,
                             pinnedTextItems = pinnedTextByNoteId[note.id].orEmpty(),
                             editorChromeStyle = editorChromeStyle,
+                            pinnedHighlightColor = pinnedHighlightColor,
                             showingRecentlyDeleted = showingRecentlyDeleted,
                             selectionMode = selectionMode,
                             selected = selectedNoteIds.contains(note.id),
@@ -913,6 +980,7 @@ fun NotesListScreen(
             note = note,
             selectedCount = 1,
             pinnedTextItems = pinnedTextByNoteId[note.id].orEmpty(),
+            pinnedHighlightColor = pinnedHighlightColor,
             showPreviewCard = true,
             pinActionLabel = if (note.isPinned) "Unpin" else "Pin",
             onDismiss = { previewedNote = null },
@@ -940,6 +1008,7 @@ fun NotesListScreen(
 private fun FolderListRow(
     folder: Folder,
     noteCount: Int,
+    editorChromeStyle: EditorChromeStyle,
     selectionMode: Boolean,
     menuExpanded: Boolean,
     onOpen: () -> Unit,
@@ -948,10 +1017,18 @@ private fun FolderListRow(
     onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val rowShape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    val rowTrim = if (editorChromeStyle.isChromeAccent) {
+        chromeAccentTrimBrush(MaterialTheme.colorScheme.background)
+    } else {
+        SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+    }
     Box(modifier = Modifier.padding(vertical = 4.dp)) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(rowShape)
+                .border(width = 1.dp, brush = rowTrim, shape = rowShape)
                 .combinedClickable(
                     onClick = {
                         if (!selectionMode) {
@@ -966,7 +1043,8 @@ private fun FolderListRow(
                 ),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-            )
+            ),
+            shape = rowShape
         ) {
             Row(
                 modifier = Modifier.padding(16.dp),
@@ -1007,6 +1085,7 @@ private fun NoteListRow(
     note: Note,
     pinnedTextItems: List<PinnedText>,
     editorChromeStyle: EditorChromeStyle,
+    pinnedHighlightColor: PinnedHighlightColor,
     showingRecentlyDeleted: Boolean,
     selectionMode: Boolean,
     selected: Boolean,
@@ -1028,11 +1107,19 @@ private fun NoteListRow(
         note.isPinned -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
         else -> notePreviewBackground
     }
+    val rowShape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    val rowTrim = if (editorChromeStyle.isChromeAccent) {
+        chromeAccentTrimBrush(MaterialTheme.colorScheme.background)
+    } else {
+        SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+    }
 
     Box(modifier = Modifier.padding(vertical = 4.dp)) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(rowShape)
+                .border(width = 1.dp, brush = rowTrim, shape = rowShape)
                 .combinedClickable(
                     onClick = {
                         if (!showingRecentlyDeleted) {
@@ -1047,7 +1134,8 @@ private fun NoteListRow(
                         if (!showingRecentlyDeleted) onLongPress(note)
                     }
                 ),
-            colors = CardDefaults.cardColors(containerColor = containerColor)
+            colors = CardDefaults.cardColors(containerColor = containerColor),
+            shape = rowShape
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -1082,6 +1170,7 @@ private fun NoteListRow(
                 pinnedTextPreviewLine(pinnedTextItems)?.let { preview ->
                     PinnedPreviewText(
                         text = preview,
+                        pinnedHighlightColor = pinnedHighlightColor,
                         maxLines = 1,
                         modifier = Modifier.testTag("note-row-pinned-text")
                     )
@@ -1119,6 +1208,7 @@ private fun NotePreviewDialog(
     note: Note?,
     selectedCount: Int,
     pinnedTextItems: List<PinnedText>,
+    pinnedHighlightColor: PinnedHighlightColor,
     showPreviewCard: Boolean,
     pinActionLabel: String,
     onDismiss: () -> Unit,
@@ -1155,6 +1245,7 @@ private fun NotePreviewDialog(
                         pinnedTextPreviewLine(pinnedTextItems)?.let { preview ->
                             PinnedPreviewText(
                                 text = preview,
+                                pinnedHighlightColor = pinnedHighlightColor,
                                 maxLines = 3,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1257,22 +1348,30 @@ private fun NotePreviewActionRow(
 @Composable
 private fun PinnedPreviewText(
     text: String,
+    pinnedHighlightColor: PinnedHighlightColor,
     modifier: Modifier = Modifier,
     maxLines: Int
 ) {
+    val highlight = PinnedHighlightPalette.highlightFor(pinnedHighlightColor)
+    val textColor = PinnedHighlightPalette.textFor(pinnedHighlightColor)
     Surface(
         modifier = modifier,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-        color = PinnedHighlightPalette.Highlight
+        color = highlight
     ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-            color = PinnedHighlightPalette.Text,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis
-        )
+        Box(
+            modifier = Modifier
+                .background(PinnedHighlightPalette.shineBrush(highlight))
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                color = textColor,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

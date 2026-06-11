@@ -84,7 +84,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
@@ -108,6 +110,9 @@ import com.northsignalstudio.myram.data.Note
 import com.northsignalstudio.myram.data.NotePhotoAttachment
 import com.northsignalstudio.myram.data.PinnedText
 import com.northsignalstudio.myram.ui.components.ChromeActionBar
+import com.northsignalstudio.myram.ui.components.chromeAccentBrush
+import com.northsignalstudio.myram.ui.components.chromeAccentTrimBrush
+import com.northsignalstudio.myram.ui.components.chromeControlPlate
 import com.northsignalstudio.myram.ui.components.computeTopBarLayout
 import com.northsignalstudio.myram.ui.NotesViewModel
 import com.northsignalstudio.myram.ui.richtext.RichTextEditor
@@ -353,6 +358,16 @@ private fun RichTextActionBars(
     } else {
         MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
     }
+    val toolbarBrush = if (chromeStyle.isChromeAccent) {
+        chromeAccentBrush(MaterialTheme.colorScheme.background)
+    } else {
+        SolidColor(toolbarColor)
+    }
+    val toolbarTrimBrush = if (chromeStyle.isChromeAccent) {
+        chromeAccentTrimBrush(MaterialTheme.colorScheme.background)
+    } else {
+        SolidColor(toolbarStrokeColor)
+    }
 
     Column(
         modifier = modifier,
@@ -363,8 +378,8 @@ private fun RichTextActionBars(
             Column(
                 modifier = Modifier
                     .clip(toolbarShape)
-                    .background(toolbarColor)
-                    .border(width = 1.dp, color = toolbarStrokeColor, shape = toolbarShape)
+                    .background(toolbarBrush)
+                    .border(width = 1.dp, brush = toolbarTrimBrush, shape = toolbarShape)
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -374,24 +389,28 @@ private fun RichTextActionBars(
                         icon = Icons.Filled.FormatBold,
                         label = "Bold",
                         selected = formatState.bold,
+                        chromeStyle = chromeStyle,
                         onClick = { actions?.toggleBold() }
                     )
                     ToggleFormatIcon(
                         icon = Icons.Filled.FormatItalic,
                         label = "Italic",
                         selected = formatState.italic,
+                        chromeStyle = chromeStyle,
                         onClick = { actions?.toggleItalic() }
                     )
                     ToggleFormatIcon(
                         icon = Icons.Filled.FormatUnderlined,
                         label = "Underline",
                         selected = formatState.underline,
+                        chromeStyle = chromeStyle,
                         onClick = { actions?.toggleUnderline() }
                     )
                     ToggleFormatIcon(
                         icon = Icons.Filled.StrikethroughS,
                         label = "Strikethrough",
                         selected = formatState.strikethrough,
+                        chromeStyle = chromeStyle,
                         onClick = { actions?.toggleStrikethrough() }
                     )
                     Box {
@@ -399,6 +418,7 @@ private fun RichTextActionBars(
                             icon = Icons.Filled.TextFields,
                             label = "Font size",
                             selected = false,
+                            chromeStyle = chromeStyle,
                             onClick = { sizeMenuExpanded = true }
                         )
                         DropdownMenu(
@@ -459,6 +479,7 @@ private fun RichTextActionBars(
                 icon = if (keyboardVisible) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
                 label = "Keyboard toggle",
                 selected = false,
+                chromeStyle = chromeStyle,
                 onClick = onToggleKeyboard
             )
             Box {
@@ -467,6 +488,7 @@ private fun RichTextActionBars(
                     label = "History",
                     selected = false,
                     enabled = canUndo || canRedo,
+                    chromeStyle = chromeStyle,
                     onClick = { historyMenuExpanded = true }
                 )
                 DropdownMenu(
@@ -491,13 +513,14 @@ private fun RichTextActionBars(
                     )
                 }
             }
-            ToggleFormatIcon(icon = Icons.Filled.ContentCut, label = "Cut", selected = false, onClick = { actions?.cutSelection() })
-            ToggleFormatIcon(icon = Icons.Filled.ContentCopy, label = "Copy", selected = false, onClick = { actions?.copySelection() })
+            ToggleFormatIcon(icon = Icons.Filled.ContentCut, label = "Cut", selected = false, chromeStyle = chromeStyle, onClick = { actions?.cutSelection() })
+            ToggleFormatIcon(icon = Icons.Filled.ContentCopy, label = "Copy", selected = false, chromeStyle = chromeStyle, onClick = { actions?.copySelection() })
             Box {
                 ToggleFormatIcon(
                     icon = Icons.Filled.ContentPaste,
                     label = "Paste",
                     selected = false,
+                    chromeStyle = chromeStyle,
                     onClick = { pasteMenuExpanded = true }
                 )
                 DropdownMenu(
@@ -520,12 +543,13 @@ private fun RichTextActionBars(
                     )
                 }
             }
-            ToggleFormatIcon(icon = Icons.Filled.SelectAll, label = "Select all", selected = false, onClick = { actions?.toggleSelectAll() })
-            ToggleFormatIcon(icon = Icons.Filled.CheckBox, label = "Checklist", selected = false, onClick = { actions?.toggleChecklistItem() })
+            ToggleFormatIcon(icon = Icons.Filled.SelectAll, label = "Select all", selected = false, chromeStyle = chromeStyle, onClick = { actions?.toggleSelectAll() })
+            ToggleFormatIcon(icon = Icons.Filled.CheckBox, label = "Checklist", selected = false, chromeStyle = chromeStyle, onClick = { actions?.toggleChecklistItem() })
             ToggleFormatIcon(
                 icon = Icons.Filled.PushPin,
                 label = "Pin",
                 selected = false,
+                chromeStyle = chromeStyle,
                 onClick = onPinSelection,
                 modifier = Modifier.testTag("keyboard-control-pin")
             )
@@ -533,6 +557,7 @@ private fun RichTextActionBars(
                 icon = if (showingFormattingControls) Icons.Filled.Close else Icons.Filled.MoreVert,
                 label = "Formatting menu",
                 selected = showingFormattingControls,
+                chromeStyle = chromeStyle,
                 onClick = onToggleFormattingControls,
                 modifier = Modifier.testTag("keyboard-control-overflow-toggle")
             )
@@ -546,11 +571,24 @@ private fun ToggleFormatIcon(
     label: String,
     selected: Boolean,
     enabled: Boolean = true,
+    chromeStyle: EditorChromeStyle? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    IconButton(onClick = onClick, modifier = modifier.size(30.dp), enabled = enabled) {
+    val shape = RoundedCornerShape(8.dp)
+    IconButton(
+        onClick = onClick,
+        modifier = modifier
+            .size(30.dp)
+            .chromeControlPlate(
+                style = chromeStyle ?: EditorChromeStyle.Standard,
+                backgroundColor = MaterialTheme.colorScheme.background,
+                shape = shape,
+                selected = selected
+            ),
+        enabled = enabled
+    ) {
         Icon(
             imageVector = icon,
             contentDescription = label,

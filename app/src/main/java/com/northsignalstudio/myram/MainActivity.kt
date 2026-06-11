@@ -70,6 +70,13 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
+            var pinnedHighlightColor by remember {
+                mutableStateOf(
+                    PinnedHighlightColor.fromPreferenceValue(
+                        prefs.getString("pinned_highlight_color", PinnedHighlightColor.Yellow.preferenceValue)
+                    )
+                )
+            }
             val saveToFilesLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.StartActivityForResult()
             ) { result ->
@@ -101,6 +108,11 @@ class MainActivity : ComponentActivity() {
             fun updateEditorChromeStyle(style: EditorChromeStyle) {
                 editorChromeStyle = style
                 prefs.edit().putString("editor_chrome_style", style.preferenceValue).apply()
+            }
+
+            fun updatePinnedHighlightColor(color: PinnedHighlightColor) {
+                pinnedHighlightColor = color
+                prefs.edit().putString("pinned_highlight_color", color.preferenceValue).apply()
             }
 
             MyRAMTheme(
@@ -172,6 +184,8 @@ class MainActivity : ComponentActivity() {
                                 onAppearanceSettingChanged = ::updateAppearanceSetting,
                                 editorChromeStyle = editorChromeStyle,
                                 onEditorChromeStyleChanged = ::updateEditorChromeStyle,
+                                pinnedHighlightColor = pinnedHighlightColor,
+                                onPinnedHighlightColorChanged = ::updatePinnedHighlightColor,
                                 onExportSelectedNotes = { selectedNotes ->
                                     vm.exportNotesForSharing(
                                         notesToExport = selectedNotes,
@@ -199,6 +213,7 @@ class MainActivity : ComponentActivity() {
                                         vm = vm,
                                         note = selectedNote,
                                         editorChromeStyle = editorChromeStyle,
+                                        pinnedHighlightColor = pinnedHighlightColor,
                                         onNoteChanged = { selectedNote = it },
                                         onShareNote = { noteToShare ->
                                             vm.exportNotesForSharing(
