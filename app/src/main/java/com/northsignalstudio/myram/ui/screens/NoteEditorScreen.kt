@@ -84,7 +84,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
@@ -108,6 +110,8 @@ import com.northsignalstudio.myram.data.Note
 import com.northsignalstudio.myram.data.NotePhotoAttachment
 import com.northsignalstudio.myram.data.PinnedText
 import com.northsignalstudio.myram.ui.components.ChromeActionBar
+import com.northsignalstudio.myram.ui.components.chromeAccentBrush
+import com.northsignalstudio.myram.ui.components.chromeAccentTrimBrush
 import com.northsignalstudio.myram.ui.components.computeTopBarLayout
 import com.northsignalstudio.myram.ui.NotesViewModel
 import com.northsignalstudio.myram.ui.richtext.RichTextEditor
@@ -353,6 +357,16 @@ private fun RichTextActionBars(
     } else {
         MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
     }
+    val toolbarBrush = if (chromeStyle.isChromeAccent) {
+        chromeAccentBrush(MaterialTheme.colorScheme.background)
+    } else {
+        SolidColor(toolbarColor)
+    }
+    val toolbarTrimBrush = if (chromeStyle.isChromeAccent) {
+        chromeAccentTrimBrush(MaterialTheme.colorScheme.background)
+    } else {
+        SolidColor(toolbarStrokeColor)
+    }
 
     Column(
         modifier = modifier,
@@ -363,8 +377,8 @@ private fun RichTextActionBars(
             Column(
                 modifier = Modifier
                     .clip(toolbarShape)
-                    .background(toolbarColor)
-                    .border(width = 1.dp, color = toolbarStrokeColor, shape = toolbarShape)
+                    .background(toolbarBrush)
+                    .border(width = 1.dp, brush = toolbarTrimBrush, shape = toolbarShape)
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -550,7 +564,11 @@ private fun ToggleFormatIcon(
     modifier: Modifier = Modifier
 ) {
     val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    IconButton(onClick = onClick, modifier = modifier.size(30.dp), enabled = enabled) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.size(30.dp),
+        enabled = enabled
+    ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
@@ -566,6 +584,7 @@ fun NoteEditorScreen(
     vm: NotesViewModel,
     note: Note?,
     editorChromeStyle: EditorChromeStyle,
+    pinnedHighlightColor: PinnedHighlightColor,
     onNoteChanged: (Note) -> Unit,
     onShareNote: (Note) -> Unit,
     onBack: () -> Unit
@@ -846,6 +865,12 @@ fun NoteEditorScreen(
     val canPerformRedo = redoHistory.isNotEmpty()
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
+    val editorSurfaceShape = RoundedCornerShape(12.dp)
+    val editorChromeTrim = if (editorChromeStyle.isChromeAccent) {
+        chromeAccentTrimBrush(MaterialTheme.colorScheme.background)
+    } else {
+        SolidColor(Color.Transparent)
+    }
     val editorTopActions = remember(note?.id) {
         listOf(
             EditorTopBarAction("new-note", Icons.Filled.Add, "New note") {
@@ -1027,6 +1052,7 @@ fun NoteEditorScreen(
                 PinnedTextSection(
                     pinnedTextItems = pinnedTextItems,
                     editorChromeStyle = editorChromeStyle,
+                    pinnedHighlightColor = pinnedHighlightColor,
                     expanded = arePinnedExpanded,
                     onExpandedChanged = {
                         arePinnedExpanded = it
@@ -1056,6 +1082,12 @@ fun NoteEditorScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
+                        .clip(editorSurfaceShape)
+                        .border(
+                            width = if (editorChromeStyle.isChromeAccent) 1.dp else 0.dp,
+                            brush = editorChromeTrim,
+                            shape = editorSurfaceShape
+                        )
                         .focusRequester(editorFocusRequester),
                     storedContent = storedContent,
                     onStoredContentChanged = { newStored ->
@@ -1197,6 +1229,7 @@ fun NoteEditorScreen(
 private fun PinnedTextSection(
     pinnedTextItems: List<PinnedText>,
     editorChromeStyle: EditorChromeStyle,
+    pinnedHighlightColor: PinnedHighlightColor,
     expanded: Boolean,
     onExpandedChanged: (Boolean) -> Unit,
     onAdd: () -> Unit,
@@ -1208,6 +1241,23 @@ private fun PinnedTextSection(
     var activeDragId by remember { mutableStateOf<Long?>(null) }
     var activeDragOffsetY by remember { mutableFloatStateOf(0f) }
     var pendingInsertionIndex by remember { mutableStateOf<Int?>(null) }
+    val sectionShape = RoundedCornerShape(8.dp)
+    val sectionBrush = if (editorChromeStyle.isChromeAccent) {
+        chromeAccentBrush(MaterialTheme.colorScheme.background)
+    } else {
+        SolidColor(
+            if (editorChromeStyle.isWarmPaper) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            }
+        )
+    }
+    val sectionTrim = if (editorChromeStyle.isChromeAccent) {
+        chromeAccentTrimBrush(MaterialTheme.colorScheme.background)
+    } else {
+        SolidColor(MaterialTheme.colorScheme.outline.copy(alpha = 0.14f))
+    }
 
     if (pinnedTextItems.isEmpty()) {
         Row(
@@ -1231,14 +1281,16 @@ private fun PinnedTextSection(
             .fillMaxWidth()
             .padding(bottom = 10.dp)
             .testTag("pinned-text-section"),
-        shape = RoundedCornerShape(8.dp),
-        color = if (editorChromeStyle.isWarmPaper) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-        }
+        shape = sectionShape,
+        color = Color.Transparent
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+        Column(
+            modifier = Modifier
+                .clip(sectionShape)
+                .background(sectionBrush)
+                .border(width = 1.dp, brush = sectionTrim, shape = sectionShape)
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -1273,6 +1325,7 @@ private fun PinnedTextSection(
                     pinnedTextItems.forEachIndexed { index, pinnedText ->
                         PinnedTextRow(
                             pinnedText = pinnedText,
+                            pinnedHighlightColor = pinnedHighlightColor,
                             index = index,
                             count = pinnedTextItems.size,
                             activeDragId = activeDragId,
@@ -1312,22 +1365,25 @@ private fun PinnedTextSection(
                 val preview = pinnedTextItems.firstOrNull()?.text
                     ?.ifBlank { "Pinned" }
                     ?: "Pinned"
+                val highlight = PinnedHighlightPalette.highlightFor(pinnedHighlightColor)
                 Surface(
                     modifier = Modifier
                         .padding(start = 8.dp, end = 8.dp, bottom = 6.dp)
                         .testTag("pinned-text-collapsed-preview"),
                     shape = RoundedCornerShape(8.dp),
-                    color = PinnedHighlightPalette.Highlight
+                    color = highlight
                 ) {
                     Text(
                         text = preview,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                         color = if (preview == "Pinned") {
-                            PinnedHighlightPalette.PlaceholderText
+                            PinnedHighlightPalette.placeholderTextFor(pinnedHighlightColor)
                         } else {
-                            PinnedHighlightPalette.Text
+                            PinnedHighlightPalette.textFor(pinnedHighlightColor)
                         },
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        modifier = Modifier
+                            .background(PinnedHighlightPalette.shineBrush(highlight))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     )
                 }
             }
@@ -1338,6 +1394,7 @@ private fun PinnedTextSection(
 @Composable
 private fun PinnedTextRow(
     pinnedText: PinnedText,
+    pinnedHighlightColor: PinnedHighlightColor,
     index: Int,
     count: Int,
     activeDragId: Long?,
@@ -1353,6 +1410,9 @@ private fun PinnedTextRow(
     var editing by remember(pinnedText.id) { mutableStateOf(false) }
     var menuExpanded by remember(pinnedText.id) { mutableStateOf(false) }
     var dragOffsetY by remember(pinnedText.id) { mutableFloatStateOf(0f) }
+    val highlight = PinnedHighlightPalette.highlightFor(pinnedHighlightColor)
+    val textColor = PinnedHighlightPalette.textFor(pinnedHighlightColor)
+    val placeholderColor = PinnedHighlightPalette.placeholderTextFor(pinnedHighlightColor)
 
     Row(
         modifier = Modifier
@@ -1365,12 +1425,14 @@ private fun PinnedTextRow(
                 onLongClick = { menuExpanded = true }
             )
             .testTag("pinned-text-row")
-            .background(PinnedHighlightPalette.Highlight, RoundedCornerShape(8.dp))
+            .background(highlight, RoundedCornerShape(8.dp))
+            .background(PinnedHighlightPalette.shineBrush(highlight), RoundedCornerShape(8.dp))
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         ReorderGripDots(
+            color = placeholderColor,
             modifier = Modifier
                 .size(width = 24.dp, height = 30.dp)
                 .pointerInput(pinnedText.id, index, count) {
@@ -1422,9 +1484,9 @@ private fun PinnedTextRow(
                     .padding(vertical = 8.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (pinnedText.text.isBlank()) {
-                    PinnedHighlightPalette.PlaceholderText
+                    placeholderColor
                 } else {
-                    PinnedHighlightPalette.Text
+                    textColor
                 },
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
@@ -1433,7 +1495,7 @@ private fun PinnedTextRow(
                 Icons.Filled.Edit,
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
-                tint = PinnedHighlightPalette.PlaceholderText
+                tint = placeholderColor
             )
         }
 
@@ -1462,7 +1524,10 @@ private fun PinnedTextRow(
 }
 
 @Composable
-private fun ReorderGripDots(modifier: Modifier = Modifier) {
+private fun ReorderGripDots(
+    color: Color,
+    modifier: Modifier = Modifier
+) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
@@ -1474,7 +1539,7 @@ private fun ReorderGripDots(modifier: Modifier = Modifier) {
                     Surface(
                         modifier = Modifier.size(4.dp),
                         shape = CircleShape,
-                        color = PinnedHighlightPalette.PlaceholderText
+                        color = color
                     ) {}
                 }
             }
