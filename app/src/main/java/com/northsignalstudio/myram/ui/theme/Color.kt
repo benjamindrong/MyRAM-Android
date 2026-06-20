@@ -26,7 +26,7 @@ val warm_paper_primaryContainer = Color(0xFFECDABB)
 val warm_paper_onSurface = Color(0xFF1C1C1E)
 val warm_paper_onSurfaceVariant = Color(0xFF5B4B38)
 val warm_paper_outline = Color(0xFF885B27)
-val warm_paper_toolbar = Color(0xFFFAEFDB)
+val warm_paper_toolbar = Color(0xFFFFFAF1)
 
 val warm_paper_dark_primary = Color(0xFFEB9F42)
 val warm_paper_dark_onPrimary = Color(0xFF1C1C1E)

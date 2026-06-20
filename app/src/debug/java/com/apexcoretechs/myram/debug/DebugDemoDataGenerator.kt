@@ -169,12 +169,12 @@ object DebugDemoDataGenerator {
                 "People don't usually lose notes.",
                 "Need to look up widget limitations on iOS.",
                 "They lose track of information.",
-                "Cross-note highlights could be useful someday.",
+                "Linked highlights could be useful someday.",
                 "The signal idea keeps coming back.",
                 "Need to remember to send that email.",
-                "AI organization should help surface useful information without assigning priorities.",
+                "Smart grouping should help surface useful information without assigning priorities.",
                 "The wording probably still needs work.",
-                "Home screen widgets would be useful for recurring information."
+                "Launcher reminders would be useful for recurring information."
             )
         ),
         DemoNoteSeed(
