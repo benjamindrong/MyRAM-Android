@@ -17,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
+// Clipboard APIs delegate into Android framework code, so these tests need Robolectric instead of the stub jar.
 @RunWith(RobolectricTestRunner::class)
 class RichTextPasteFormattingTest {
     @Test
