@@ -14,7 +14,11 @@ import com.northsignalstudio.myram.ui.richtext.pastePlainTextMatchingDestination
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+// Clipboard APIs delegate into Android framework code, so these tests need Robolectric instead of the stub jar.
+@RunWith(RobolectricTestRunner::class)
 class RichTextPasteFormattingTest {
     @Test
     fun firstPlainText_readsClipboardTextInsteadOfClipItemDebugString() {

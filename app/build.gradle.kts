@@ -75,4 +75,5 @@ dependencies {
     implementation(libs.mlkit.text.recognition)
     testImplementation(libs.junit)
     testImplementation(libs.json)
+    testImplementation(libs.robolectric)
 }
